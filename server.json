@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.vicennial/motel",
+  "title": "motel",
+  "description": "Disk and servers by the hour, for agents. Temporary scratch rooms on cloud volumes that check out on time.",
+  "websiteUrl": "https://github.com/vicennial/motel",
+  "repository": {
+    "url": "https://github.com/vicennial/motel",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "motel",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        { "type": "positional", "value": "mcp" }
+      ],
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

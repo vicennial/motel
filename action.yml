@@ -1,0 +1,117 @@
+name: motel
+description: Run a CI job on a disposable motel cabin (a server by the hour), or lease a room (a TTL scratch disk), and always check it out.
+author: vicennial
+branding:
+  icon: server
+  color: blue
+
+inputs:
+  mode:
+    description: "cabin-run runs `command` on a fresh cabin and deletes it; room leases a scratch directory and runs `command` in it."
+    required: false
+    default: cabin-run
+  command:
+    description: "Shell command. In cabin-run it runs under `sh -c` in ~/work on the cabin, after the sync. In room mode it runs under `bash -c` on the runner, in the room."
+    required: false
+    default: ""
+  server-type:
+    description: "Cabin server type, for example cpx32 (cabin-run). Empty uses the first type the host allows."
+    required: false
+    default: ""
+  ttl:
+    description: "How long the lease lasts: minutes, hours or days such as 90m, 2h or 1d. The cabin or room is also checked out when the command ends."
+    required: false
+    default: 1h
+  size:
+    description: "Room size: a number of GB, or 200G or 1T (room mode)."
+    required: false
+    default: "20"
+  sync-path:
+    description: "cabin-run: the git checkout to copy to the cabin (default: the current directory). room: a directory to copy into the room (default: nothing)."
+    required: false
+    default: ""
+  hetzner-token:
+    description: "Hetzner Cloud API token. Pass a secret. Written to a root-owned 0600 file for `motel-desk ... setup --token-file`, then deleted. Leave empty when the runner is already set up."
+    required: false
+    default: ""
+  motel-version:
+    description: "Git tag or branch of vicennial/motel to install from. Empty installs, only if motel is missing, from the ref this action runs at."
+    required: false
+    default: ""
+  keep-room:
+    description: "room mode: leave the room in place after the step so later steps can use room-path. Check it out yourself with `motel checkout ID --now`."
+    required: false
+    default: "false"
+  fail-on-error:
+    description: "Fail the step when the command exits nonzero. With false, read the exit-code output."
+    required: false
+    default: "true"
+
+outputs:
+  exit-code:
+    description: "Exit status of the command."
+    value: ${{ steps.run.outputs.exit-code }}
+  cabin-id:
+    description: "cabin-run: the cabin's id (read from motel's messages, so it can be empty)."
+    value: ${{ steps.run.outputs.cabin-id }}
+  room-id:
+    description: "room: the room's id."
+    value: ${{ steps.run.outputs.room-id }}
+  room-path:
+    description: "room: the room's directory. It exists after the step only with keep-room."
+    value: ${{ steps.run.outputs.room-path }}
+  cost-estimate:
+    description: "cabin-run: estimated cost in EUR, net, as reported by motel at checkout. Empty when motel did not report one."
+    value: ${{ steps.run.outputs.cost-estimate }}
+
+runs:
+  using: composite
+  steps:
+    - id: init
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/action/motel-action.sh" init
+
+    - id: prepare
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/action/motel-action.sh" prepare
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        STATE_DIR: ${{ steps.init.outputs.state }}
+        TASK: ${{ steps.init.outputs.task }}
+        MODE: ${{ inputs.mode }}
+        COMMAND: ${{ inputs.command }}
+        SERVER_TYPE: ${{ inputs.server-type }}
+        TTL: ${{ inputs.ttl }}
+        SIZE: ${{ inputs.size }}
+        SYNC_PATH: ${{ inputs.sync-path }}
+        MOTEL_VERSION: ${{ inputs.motel-version }}
+        KEEP_ROOM: ${{ inputs.keep-room }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        HETZNER_TOKEN: ${{ inputs.hetzner-token }}
+
+    - id: run
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/action/motel-action.sh" run
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        STATE_DIR: ${{ steps.init.outputs.state }}
+        TASK: ${{ steps.init.outputs.task }}
+        MODE: ${{ inputs.mode }}
+        COMMAND: ${{ inputs.command }}
+        SERVER_TYPE: ${{ inputs.server-type }}
+        TTL: ${{ inputs.ttl }}
+        SIZE: ${{ inputs.size }}
+        SYNC_PATH: ${{ inputs.sync-path }}
+        KEEP_ROOM: ${{ inputs.keep-room }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+
+    - id: cleanup
+      if: always()
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/action/motel-action.sh" cleanup
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        STATE_DIR: ${{ steps.init.outputs.state }}
+        TASK: ${{ steps.init.outputs.task }}
+        MODE: ${{ inputs.mode }}
+        KEEP_ROOM: ${{ inputs.keep-room }}

@@ -1,0 +1,228 @@
+#cloud-config
+# motel cabin guest bootstrap. Rendered per lease by motel.cabins.userdata.render_user_data; every
+# placeholder is validated before substitution. The provider firewall (attached at creation) blocks all
+# public ingress except, in ssh-allowlist mode, TCP/22 from the host's own address. This file adds the guest
+# packet filter, key-only SSH, the admission gate, the activity sampler and the expiry dead-man's switch.
+# Secrets here: the cabin's own host key, and in tailscale mode a one-use ephemeral enrollment key, both newly
+# issued for this guest. The bootstrap never echoes them and deletes the cloud-init copies of user-data when
+# it finishes. No deploy key, provider token or agent forwarding reaches this guest.
+disable_root: true
+ssh_pwauth: false
+ssh_deletekeys: true
+# Explicit controller-generated host keys suppress cloud-init key generation.
+ssh_keys:
+  ed25519_private: |
+@@HOST_PRIVATE@@
+  ed25519_public: @@HOST_PUBLIC@@
+# Authorized keys live in root-owned files (sshd AuthorizedKeysFile below), so a session cannot drop the
+# forced commands by editing ~/.ssh. Every cabin session, including rsync, scp and sftp, enters through the
+# admission gate.
+users:
+  - name: cabin
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+  - name: cabinctl
+    shell: /bin/sh
+    lock_passwd: true
+write_files:
+  - path: /etc/ssh/cabin-keys/cabin
+    permissions: '0644'
+    content: |
+      restrict,pty@@CABIN_KEY_OPTIONS@@,command="/usr/local/bin/motel-guest gate" @@CLIENT_PUBLIC@@
+  - path: /etc/ssh/cabin-keys/cabinctl
+    permissions: '0644'
+    content: |
+      restrict,command="/usr/local/bin/motel-guest ctl" @@CONTROLLER_PUBLIC@@
+  - path: /etc/sudoers.d/cabinctl
+    permissions: '0440'
+    content: |
+      cabinctl ALL=(root) NOPASSWD: /usr/local/bin/motel-guest seal, /usr/local/bin/motel-guest inspect
+@@EXTRA_FILES@@
+@@TOUR_FILES@@
+  - path: /etc/motel-cabin/lease.json
+    permissions: '0644'
+    encoding: b64
+    content: @@LEASE_B64@@
+  - path: /usr/local/bin/motel-guest
+    permissions: '0755'
+    encoding: gz+b64
+    content: @@GUEST_B64@@
+  - path: /etc/ssh/sshd_config.d/10-cabin.conf
+    permissions: '0644'
+    content: |
+      AddressFamily inet
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      AuthenticationMethods publickey
+      AllowUsers cabin cabinctl
+      AuthorizedKeysFile /etc/ssh/cabin-keys/%u
+      AuthorizedKeysCommand none
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+      AllowStreamLocalForwarding no
+      X11Forwarding no
+      PermitTunnel no
+      GatewayPorts no
+      PermitUserEnvironment no
+      UseDNS no
+  - path: /etc/ssh/sshd_config.d/05-cabin-listen.conf
+    permissions: '0644'
+    content: |
+      ListenAddress @@LISTEN_ADDR@@
+  # The cloud firewall allows DNS only to the configured resolvers, so the guest must use exactly those.
+  - path: /etc/systemd/resolved.conf.d/10-cabin.conf
+    permissions: '0644'
+    content: |
+      [Resolve]
+      DNS=@@DNS_RESOLVERS@@
+      FallbackDNS=
+      Domains=~.
+  - path: /etc/sysctl.d/60-cabin.conf
+    permissions: '0644'
+    content: |
+      # sshd may bind the tailnet address before tailscaled is up after a reboot (tailscale mode).
+      net.ipv4.ip_nonlocal_bind = 1
+      net.ipv6.conf.all.disable_ipv6 = 1
+  - path: /etc/motel-cabin/guest.nft
+    permissions: '0644'
+    content: |
+@@NFT_RULES@@
+  - path: /etc/systemd/system/cabin-guest-firewall.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Restore cabin guest firewall before guest access
+      DefaultDependencies=no
+      Before=network-pre.target ssh.service ssh.socket@@FIREWALL_BEFORE@@
+      Wants=network-pre.target
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/sbin/nft -f /etc/motel-cabin/guest.nft
+      RemainAfterExit=yes
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/systemd/system/ssh.service.d/10-cabin-firewall.conf
+    permissions: '0644'
+    content: |
+      [Unit]
+      Requires=cabin-guest-firewall.service
+      After=cabin-guest-firewall.service
+  - path: /etc/systemd/system/ssh.socket.d/10-cabin-firewall.conf
+    permissions: '0644'
+    content: |
+      [Unit]
+      Requires=cabin-guest-firewall.service
+      After=cabin-guest-firewall.service
+  - path: /etc/systemd/system/cabin-guest-sample.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=cabin guest activity sample
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/motel-guest sample
+  - path: /etc/systemd/system/cabin-guest-sample.timer
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=cabin guest activity sample every minute
+      [Timer]
+      OnBootSec=1min
+      OnUnitActiveSec=1min
+      AccuracySec=5s
+      [Install]
+      WantedBy=timers.target
+  # Dead-man's switch: powers the guest off once the hard expiry (expiry + grace + margin) has passed. This is
+  # on top of the real reaper. A powered-off server still bills; only the reaper deletes it.
+  - path: /etc/systemd/system/cabin-guest-expiry.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=cabin guest expiry dead-man's switch
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/motel-guest expire
+  - path: /etc/systemd/system/cabin-guest-expiry.timer
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=cabin guest expiry check every minute
+      [Timer]
+      OnBootSec=1min
+      OnUnitActiveSec=1min
+      AccuracySec=5s
+      [Install]
+      WantedBy=timers.target
+  - path: /usr/local/sbin/cabin-bootstrap
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      # Never enable xtrace here: secret paths must not be expanded into logs.
+      set -Eeuo pipefail
+      exec >>/var/log/cabin-bootstrap.log 2>&1
+      # A failing command is named in the log (its text as written, nothing expanded): `motel cabin ls` and `tour status` show it.
+      trap 'echo "failed: line $LINENO: $BASH_COMMAND"' ERR
+      export DEBIAN_FRONTEND=noninteractive
+      systemctl daemon-reload
+      systemctl enable --now cabin-guest-expiry.timer
+      install -d -o root -g root -m 0755 /var/lib/motel-guest
+      install -d -o cabin -g cabin -m 0700 /var/lib/motel-guest/jobs
+      install -d -o cabinctl -g cabinctl -m 0755 /var/lib/motel-guest/ctl
+      install -d -o cabin -g cabin -m 0755 /var/lib/motel-guest/sessions
+      install -d -o root -g root -m 0755 /var/lib/motel-guest/gate
+      install -o root -g root -m 0644 /dev/null /var/lib/motel-guest/gate/admission.lock
+      printf '{"bootstrap": "running"}\n' > /var/lib/motel-guest/ready.json
+      # Each stage is logged and kept in a small file, so apt's output cannot push the marker out of the log tail.
+      stage() { echo "stage: $1"; printf '%s\n' "$1" > /var/lib/motel-guest/boot-stage || true; }
+      passwd -l root >/dev/null
+      # The provider may create root with a password that must be changed; then any sudo run by root fails its
+      # account check ("Account or password is expired"). Root's password stays locked; only the forced change goes.
+      chage -d "$(date +%F)" root
+      systemctl restart systemd-resolved || true
+      stage packages
+@@BOOT_PREPACKAGES@@
+      apt-get update -q -o Acquire::Retries=3
+      apt-get install -y -q -o Acquire::Retries=3 -o DPkg::Lock::Timeout=300 @@BOOT_PACKAGES@@
+      sysctl -q --system
+      stage firewall
+      # The stock service flushes the whole ruleset; only our dedicated service owns this table.
+      systemctl mask nftables.service
+      systemctl daemon-reload
+      systemctl enable --now cabin-guest-firewall.service
+      nft -j -s list table inet cabin > /etc/motel-cabin/expected-nft.json
+      stage access
+@@BOOT_ACCESS@@
+      stage disk
+@@BOOT_DISK@@
+@@BOOT_TOUR@@
+      stage finish
+      fwd=false
+      if sshd -T | grep -qx 'allowtcpforwarding no' && sshd -T | grep -qx 'allowagentforwarding no'; then fwd=true; fi
+      nft list table inet cabin >/dev/null && nft_state=loaded || nft_state=missing
+      gate=missing
+      if sshd -T | grep -qx 'authorizedkeysfile /etc/ssh/cabin-keys/%u' \
+        && grep -q '^restrict,pty,command="/usr/local/bin/motel-guest gate" ' /etc/ssh/cabin-keys/cabin \
+        && [ "$(stat -c %U /etc/ssh/cabin-keys/cabin)" = root ] && visudo -cqf /etc/sudoers.d/cabinctl; then
+        gate=enforced
+      fi
+      systemctl enable --now cabin-guest-sample.timer
+      /usr/local/bin/motel-guest sample || true
+      # The host private key and any enrollment key were delivered through user-data. Remove every copy cloud-init
+      # keeps on the guest. (The provider keeps its own copy until the server is deleted.)
+      rm -f /var/lib/cloud/instance/user-data.txt* /var/lib/cloud/instance/cloud-config.txt \
+        /var/lib/cloud/instance/vendor-data.txt* /var/lib/cloud/instance/obj.pkl
+      rm -f /var/lib/cloud/instances/*/user-data.txt* /var/lib/cloud/instances/*/cloud-config.txt \
+        /var/lib/cloud/instances/*/vendor-cloud-config.txt /var/lib/cloud/instances/*/obj.pkl
+      rm -f /run/cloud-init/instance-data.json /run/cloud-init/instance-data-sensitive.json \
+        /var/lib/cloud/data/instance-data.json /var/lib/cloud/data/instance-data-sensitive.json
+      rm -rf /var/lib/cloud/instance/scripts/* /var/lib/cloud/scripts/per-instance/*
+      # The caches above are gone and the guest filter drops the metadata service. Without this, a reboot would
+      # make cloud-init fall back to no datasource, adopt a new instance id and regenerate the host key, and the
+      # pinned host key would no longer match. Disabled cloud-init keeps the boot-time network configuration.
+      touch /etc/cloud/cloud-init.disabled
+      printf '{"bootstrap": "done", "tailnet_ip": "%s", "nft": "%s", "forwarding_disabled": %s, "gate": "%s", "disk": "%s"}\n' \
+        "$ts_ip" "$nft_state" "$fwd" "$gate" "$disk_state" > /var/lib/motel-guest/ready.json
+runcmd:
+  - [/usr/local/sbin/cabin-bootstrap]

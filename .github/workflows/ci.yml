@@ -1,0 +1,97 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: macos-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install pytest
+        run: python -m pip install --quiet "pytest>=8"
+      - name: Run the tests (pure Python; no root, no cloud)
+        run: python -m pytest -q
+      - name: Live harness unit tests (pure Python with fakes; the live pass itself never runs here)
+        run: python -m pytest -q tests/live
+
+  wheel:
+    # The wheel must work on its own: package data, the console script, the MCP server and `motel install`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - name: Smoke-test the wheel in a clean venv
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke"
+          uv pip install --python "$RUNNER_TEMP/smoke/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          m="$RUNNER_TEMP/smoke/bin/motel"
+          "$m" --version
+          "$m" cabin --help > cabin-help.out
+          grep -q 'motel cabin run' cabin-help.out
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            | timeout 20 "$m" mcp | grep -q '"serverInfo"'
+          "$m" skill print > skill.out
+          grep -q '^name: motel$' skill.out
+          "$RUNNER_TEMP/smoke/bin/python" -I -c "from motel.cabins.desk import bootstrap_files; t, a = bootstrap_files(); assert t and a"
+          "$m" install --dry-run --prefix "$RUNNER_TEMP/stage" --users alice --cabins
+          test -z "$(ls -A "$RUNNER_TEMP/stage" 2>/dev/null)"
+
+  action-install:
+    # The Action's install path with a real sudo on a throwaway runner: stage a root-owned copy of the checkout, pass the
+    # installer's source audit, install, and let `prepare` finish (local provider, so no cloud account is involved).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the action's init and prepare steps
+        run: |
+          bash action/motel-action.sh init
+          state=$(sed -n 's/^state=//p' "$GITHUB_OUTPUT" | tail -n 1)
+          task=$(sed -n 's/^task=//p' "$GITHUB_OUTPUT" | tail -n 1)
+          STATE_DIR="$state" TASK="$task" MODE=room COMMAND=true bash action/motel-action.sh prepare
+      - name: The staged copy and the installed desk are root-only
+        run: |
+          stage=/usr/local/src/motel-action
+          test "$(stat -c %U:%G "$stage")" = root:root
+          test -z "$(find "$stage" ! -user root)"
+          test -z "$(find "$stage" -perm /022 ! -type l)"
+          test -z "$(find /usr/local/lib/motel ! -user root)"
+          test -z "$(find /usr/local/lib/motel -perm /022)"
+          motel --version
+          sudo test -f /etc/sudoers.d/motel
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uvx ruff check .
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # the action lists a pull request's commits to scan them
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,615 @@
+{
+ "cli": "codex-cli 0.160.0 (codex exec, provider named OpenAI so that it compacts remotely, wire_api = responses)",
+ "captured": "2026-11-11, against a loopback fake upstream, auto-compaction forced by model_auto_compact_token_limit; text, ids and schemas replaced",
+ "note": "remote_compaction_v2: the compaction request is an ordinary POST /v1/responses whose last input item is {\"type\": \"compaction_trigger\"}; the upstream answers with one `compaction` output item, and the follow-up request carries it back in `input`. codex 0.160.0 sent no /v1/responses/compact.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/responses",
+  "headers": {
+   "x-codex-beta-features": "remote_compaction_v2",
+   "x-codex-window-id": "<opaque>",
+   "x-codex-turn-metadata": "<opaque>",
+   "x-openai-internal-codex-responses-lite": "true",
+   "x-client-request-id": "<opaque>",
+   "session-id": "<opaque>",
+   "thread-id": "<opaque>",
+   "accept": "text/event-stream",
+   "content-type": "application/json",
+   "originator": "codex_exec",
+   "user-agent": "codex_exec/0.160.0 (Ubuntu 26.4.0; x86_64) unknown (codex_exec; 0.160.0)"
+  },
+  "body": {
+   "model": "gpt-6.1-sol",
+   "input": [
+    {
+     "type": "additional_tools",
+     "id": "<opaque>",
+     "role": "developer",
+     "tools": [
+      {
+       "type": "namespace",
+       "name": "functions",
+       "description": "",
+       "tools": [
+        {
+         "type": "custom",
+         "name": "exec",
+         "description": "<text>",
+         "format": {
+          "type": "text"
+         }
+        },
+        {
+         "type": "function",
+         "name": "wait",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "request_user_input",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "request_user_input_async",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        }
+       ]
+      },
+      {
+       "type": "namespace",
+       "name": "clock",
+       "description": "<text>",
+       "tools": [
+        {
+         "type": "function",
+         "name": "sleep",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        }
+       ]
+      },
+      {
+       "type": "namespace",
+       "name": "collaboration",
+       "description": "<text>",
+       "tools": [
+        {
+         "type": "function",
+         "name": "followup_task",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "interrupt_agent",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "list_agents",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "send_message",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "spawn_agent",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "wait_agent",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      },
+      {
+       "type": "input_text",
+       "text": "<text>"
+      },
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.4591446,
+      "content_item_kinds": [
+       "<text>",
+       "<text>",
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.4591455,
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.4591455,
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      },
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.4591458,
+      "content_item_kinds": [
+       "<text>",
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.5236814,
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "function_call",
+     "id": "<opaque>",
+     "name": "wait",
+     "arguments": "<text>",
+     "call_id": "<text>",
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>"
+     }
+    },
+    {
+     "type": "function_call_output",
+     "id": "<opaque>",
+     "call_id": "<text>",
+     "output": "<text>",
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.552627
+     }
+    },
+    {
+     "type": "compaction_trigger"
+    }
+   ],
+   "tool_choice": "auto",
+   "parallel_tool_calls": false,
+   "reasoning": {
+    "effort": "low",
+    "context": "all_turns"
+   },
+   "store": false,
+   "stream": true,
+   "include": [
+    "reasoning.encrypted_content"
+   ],
+   "prompt_cache_key": "<opaque>",
+   "text": {
+    "verbosity": "low"
+   },
+   "client_metadata": {
+    "x-codex-installation-id": "<opaque>",
+    "x-codex-turn-metadata": "<opaque>",
+    "session_id": "<opaque>",
+    "turn_id": "<opaque>",
+    "x-codex-window-id": "<opaque>",
+    "root_turn_id": "<opaque>",
+    "thread_id": "<opaque>"
+   }
+  }
+ },
+ "follow_up": {
+  "method": "POST",
+  "path": "/v1/responses",
+  "headers": {
+   "x-codex-beta-features": "remote_compaction_v2",
+   "x-codex-window-id": "<opaque>",
+   "x-codex-turn-metadata": "<opaque>",
+   "x-openai-internal-codex-responses-lite": "true",
+   "x-client-request-id": "<opaque>",
+   "session-id": "<opaque>",
+   "thread-id": "<opaque>",
+   "accept": "text/event-stream",
+   "content-type": "application/json",
+   "originator": "codex_exec",
+   "user-agent": "codex_exec/0.160.0 (Ubuntu 26.4.0; x86_64) unknown (codex_exec; 0.160.0)"
+  },
+  "body": {
+   "model": "gpt-6.1-sol",
+   "input": [
+    {
+     "type": "additional_tools",
+     "id": "<opaque>",
+     "role": "developer",
+     "tools": [
+      {
+       "type": "namespace",
+       "name": "functions",
+       "description": "",
+       "tools": [
+        {
+         "type": "custom",
+         "name": "exec",
+         "description": "<text>",
+         "format": {
+          "type": "text"
+         }
+        },
+        {
+         "type": "function",
+         "name": "wait",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "request_user_input",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "request_user_input_async",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        }
+       ]
+      },
+      {
+       "type": "namespace",
+       "name": "clock",
+       "description": "<text>",
+       "tools": [
+        {
+         "type": "function",
+         "name": "sleep",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        }
+       ]
+      },
+      {
+       "type": "namespace",
+       "name": "collaboration",
+       "description": "<text>",
+       "tools": [
+        {
+         "type": "function",
+         "name": "followup_task",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "interrupt_agent",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "list_agents",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "send_message",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "spawn_agent",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        },
+        {
+         "type": "function",
+         "name": "wait_agent",
+         "description": "<text>",
+         "strict": false,
+         "parameters": {
+          "type": "object"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      },
+      {
+       "type": "input_text",
+       "text": "<text>"
+      },
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "content_item_kinds": [
+       "<text>",
+       "<text>",
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "developer",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      },
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "content_item_kinds": [
+       "<text>",
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "message",
+     "id": "<opaque>",
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "<text>"
+      }
+     ],
+     "internal_chat_message_metadata_passthrough": {
+      "turn_id": "<opaque>",
+      "create_time": 1794355992.5236814,
+      "content_item_kinds": [
+       "<text>"
+      ]
+     }
+    },
+    {
+     "type": "compaction",
+     "id": "<opaque>",
+     "encrypted_content": "<text>"
+    }
+   ],
+   "tool_choice": "auto",
+   "parallel_tool_calls": false,
+   "reasoning": {
+    "effort": "low",
+    "context": "all_turns"
+   },
+   "store": false,
+   "stream": true,
+   "include": [
+    "reasoning.encrypted_content"
+   ],
+   "prompt_cache_key": "<opaque>",
+   "text": {
+    "verbosity": "low"
+   },
+   "client_metadata": {
+    "root_turn_id": "<opaque>",
+    "x-codex-turn-metadata": "<opaque>",
+    "x-codex-installation-id": "<opaque>",
+    "x-codex-window-id": "<opaque>",
+    "session_id": "<opaque>",
+    "turn_id": "<opaque>",
+    "thread_id": "<opaque>"
+   }
+  }
+ }
+}

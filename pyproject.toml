@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "motel"
+version = "0.1.0"
+description = "Disk and servers by the hour, for agents: temporary cloud volumes and disposable servers that check out on time."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "vicennial" }]
+keywords = ["agents", "claude-code", "codex", "hetzner", "scratch-space", "ephemeral", "volumes", "ttl"]
+classifiers = ["Development Status :: 3 - Alpha", "Environment :: Console", "Operating System :: POSIX :: Linux"]
+dependencies = []
+
+[project.scripts]
+motel = "motel.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/vicennial/motel"
+
+# src/omnigent holds only the optional Omnigent sandbox provider (src/omnigent/community/sandbox/motel). It carries no
+# __init__.py on purpose: Omnigent owns omnigent/, omnigent/community/ and omnigent/community/sandbox/, and a copy here
+# would overwrite its files in the shared site-packages. motel's core never imports it.
+[project.entry-points."omnigent.sandbox_providers"]
+motel = "omnigent.community.sandbox.motel.plugin:get_contribution"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/motel", "src/omnigent"]
+
+# The agent skill has one source (skills/motel/SKILL.md, used by `npx skills add`); the wheel carries a copy that
+# `motel skill install` reads. The cabin bootstrap files (cloud-init.yaml, guest_agent.py) are package data of motel.cabins.
+[tool.hatch.build.targets.wheel.force-include]
+"skills/motel/SKILL.md" = "motel/skill_data/SKILL.md"
+# Package data under src/motel (the cabin files, the tour guest runner motel/tours/guest/runner.py) ships with the wheel
+# because it sits inside the package; tests/tours/test_packaging.py inspects the built wheel.
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "--import-mode=importlib"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["B904", "UP037", "E731", "E501"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "skills", "install.sh", "server.json", "AGENTS.md", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "RELEASING.md"]

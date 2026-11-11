@@ -1,0 +1,228 @@
+{
+ "cli": "claude 2.1.319 (claude -p, CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1, default model)",
+ "captured": "2026-11-09, against a loopback fake upstream; text, ids and schemas replaced",
+ "request": {
+  "method": "POST",
+  "path": "/v1/messages?beta=true",
+  "headers": {
+   "accept": "application/json",
+   "content-type": "application/json",
+   "user-agent": "claude-cli/2.1.319 (external, sdk-cli)",
+   "x-claude-code-session-id": "<opaque>",
+   "x-stainless-lang": "js",
+   "x-stainless-package-version": "0.128.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-timeout": "600",
+   "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24",
+   "anthropic-dangerous-direct-browser-access": "true",
+   "anthropic-version": "2023-06-01",
+   "x-app": "cli"
+  },
+  "body": {
+   "model": "claude-opus-5-5",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "<text>"
+      },
+      {
+       "type": "text",
+       "text": "<text>",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ]
+    },
+    {
+     "role": "system",
+     "content": "<text>"
+    }
+   ],
+   "system": [
+    {
+     "type": "text",
+     "text": "<text>"
+    },
+    {
+     "type": "text",
+     "text": "<text>",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    },
+    {
+     "type": "text",
+     "text": "<text>",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    }
+   ],
+   "tools": [
+    {
+     "name": "Agent",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Bash",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "CronCreate",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "CronDelete",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "CronList",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Edit",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "EnterWorktree",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "ExitWorktree",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "ListAgents",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Monitor",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "NotebookEdit",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Read",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "ReportFindings",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "ScheduleWakeup",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "SendMessage",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Skill",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "TaskStop",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "WebFetch",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "WebSearch",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Workflow",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    },
+    {
+     "name": "Write",
+     "description": "<text>",
+     "input_schema": {
+      "type": "object"
+     }
+    }
+   ],
+   "metadata": {
+    "user_id": "<opaque>"
+   },
+   "max_tokens": 128000,
+   "thinking": {
+    "type": "adaptive"
+   },
+   "output_config": {
+    "effort": "medium"
+   },
+   "stream": true
+  }
+ }
+}
