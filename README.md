@@ -38,8 +38,8 @@ model, `tailscale` mode and every other cloud are tested against fakes only.
 $ motel cabin run --for 1h -- make test     # check in, sync this git checkout, run, check out
 ```
 
-The server lives in your own Hetzner project. The exit status is the command's. Setup (a dedicated project, a
-`[cabins]` table, a token) takes four steps: [first cabin](https://github.com/vicennial/motel/blob/main/docs/cabins.md#first-cabin).
+The server lives in your own Hetzner project, and the exit status is the command's. Setup (a new empty project,
+a token, one install flag) takes five lines: [first cabin](https://github.com/vicennial/motel/blob/main/docs/cabins.md#first-cabin).
 
 ## How do I give an agent 200 GB for an afternoon?
 
