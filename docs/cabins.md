@@ -12,7 +12,20 @@ Copy results out first.
 motel cabin run --for 90m -- make test      # check in, sync this git checkout, run, check out
 ```
 
-## Quick start
+## First cabin
+
+Five lines, on the Linux machine that will launch cabins. This machine must **not** be in the cabin project.
+
+```bash
+# 1. In the Hetzner console: create a NEW, EMPTY project and a Read & Write API token in it.
+sudo uvx --from motel motel install --cabins --users $USER   # 2. a new config enables cabins
+sudo motel-desk cabin setup hetzner                          # 3. paste the token at the hidden prompt
+sudo motel-desk cabin doctor                                 # 4. every line should say ok
+motel cabin run --for 1h -- uname -a                         # 5. check in, run, check out
+```
+
+If `/etc/motel/motel.toml` already exists (you use rooms), the installer keeps it: add the `[cabins]` table described
+below, then run `sudo uvx --from motel motel install --cabins --upgrade`. The steps again, in detail:
 
 1. Create a **new, empty Hetzner project** for cabins and an API token with read/write rights in it.
 2. Add a `[cabins]` table to `/etc/motel/motel.toml` (see below). Users who may take cabins are the same

@@ -15,6 +15,7 @@ with the changelog section as its notes. Pre-release versions (`0.2.0a1`, `0.2.0
 1. On `main`, in one commit named `motel X.Y.Z`:
    - set `__version__` in `src/motel/__init__.py`, `version` in `pyproject.toml` and `version` in `server.json`
      (a test checks that they match);
+   - bump the example pin (`motel==0.1.0`) in `docs/install.md` to the new release;
    - rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add a new empty `## [Unreleased]` above it, and update the
      compare links at the bottom.
    Patch (`0.1.x`) for fixes, minor (`0.x.0`) for new features or changed behavior.
@@ -26,7 +27,8 @@ with the changelog section as its notes. Pre-release versions (`0.2.0a1`, `0.2.0
 
 3. Watch the "Release" workflow. It stops before publishing when the tag, `__version__` and the changelog do not agree
    or a test fails. A version that is already on PyPI is not uploaded again, so re-running the workflow is safe.
-4. Upgrade a host: `sudo motel install --upgrade` (or re-run `install.sh` from the new tag), then `motel doctor`.
+4. Upgrade a host: `sudo uvx --from motel==X.Y.Z motel install --upgrade` (or re-run `install.sh` from the new tag), then
+   `motel doctor`. A plain `sudo motel install --upgrade` is refused: see [docs/install.md](docs/install.md).
 
 PyPI never accepts the same version twice. If a release is broken, fix it and release the next patch version.
 

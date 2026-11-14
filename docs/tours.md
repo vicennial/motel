@@ -19,6 +19,21 @@ Other parts of the tours feature:
 | **Attempt** | One run of a guest on one fresh cabin. A retry is a new attempt on a new cabin. |
 | **Binding** | A named upstream API key held by the concierge, for example `anthropic`. |
 
+## First tour
+
+A tour of one command guest needs no model and no API key. It needs [cabins](cabins.md#first-cabin) working, with tours on
+(`sudo uvx --from motel motel install --cabins --tours --users $USER` on a new host, or see
+[Operator setup](#operator-setup)). In your git repository:
+
+```bash
+echo 'guests = [{ id = "check", adapter = "command", argv = ["make", "test"], secrets = [], budget_usd = 0 }]' > tour.toml
+T=$(motel tour start tour.toml)     # prints the tour id
+motel tour wait "$T"                # blocks until the guest finishes
+motel tour result "$T" check        # what motel verified, and what the guest claimed
+```
+
+For agent guests (`claude`, `codex`) with a budget and commits to fetch, read on.
+
 ## Quick start
 
 `tour.toml`, in the root of your repository:
