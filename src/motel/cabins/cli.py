@@ -41,13 +41,32 @@ from motel.cabins.errors import (
 from motel.cabins.guestchan import ssh_options
 from motel.cabins.render import render
 from motel.cabins.util import LEASE_ID_RE, SCHEMA, TASK_RE, parse_duration, parse_size_gb
-from motel.errors import INSTALL_HINT
+from motel.errors import NOT_ALLOWED_HINT, NOT_INSTALLED_HINT
+from motel.receipts import cabin_receipt, render_cabin_receipt
 
 SUDO = "/usr/bin/sudo"
 SAFE_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 REMOTE_DIR = "work"
 ADJECTIVES = ("swift", "quiet", "brave", "amber", "lucky", "misty", "sunny", "rusty", "gentle", "plucky")
 ANIMALS = ("gull", "heron", "otter", "finch", "marten", "newt", "lynx", "crane", "wren", "badger")
+
+
+HELP_DESCRIPTION = """\
+EXPERIMENTAL. Disposable servers by the hour, in your own cloud account. A cabin is one fresh server: you check it in,
+run commands on it, and check it out. Checkout deletes it, and deletion is final: copy results out first.
+
+The provider bills every started hour in full. `run` and `checkout` end with a receipt on stderr (server type, wall time,
+started hours billed, price per hour, estimated total, servers left) and `--json` carries it under `receipt`."""
+
+HELP_EXAMPLES = """\
+examples:
+  motel cabin run -- make test            run a command on a fresh server, then delete the server
+  motel cabin run --keep -- ./build.sh    keep the cabin afterwards; open it with: motel cabin ssh ID
+  motel cabin checkin --for 2h            take a cabin and print its id (it expires after 2h)
+  motel cabin ls                          list your cabins
+  motel cabin checkout ID                 delete a cabin now and print its receipt
+
+No cloud yet? `motel try --cabin` shows a cabin run and a small tour, offline, with their receipts."""
 
 
 class CabinParser(argparse.ArgumentParser):
@@ -68,8 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--for", dest="ttl", default=None, help="checkout time from now, e.g. 90m, 2h (default 2h)")
     launch.add_argument("--task", default=None, help="short name for the cabin id")
     launch.add_argument("--disk", default=None, help="extra volume with the cabin's lifecycle, e.g. 200G")
-    parser = CabinParser(prog="motel cabin", allow_abbrev=False,
-                         description="EXPERIMENTAL. Disposable servers by the hour. Deletion is final.")
+    parser = CabinParser(prog="motel cabin", allow_abbrev=False, formatter_class=argparse.RawDescriptionHelpFormatter,
+                         description=HELP_DESCRIPTION, epilog=HELP_EXAMPLES)
     sub = parser.add_subparsers(dest="verb", required=True, parser_class=CabinParser, metavar="VERB")
     p = sub.add_parser("run", parents=[launch, common], allow_abbrev=False,
                        help="check in, sync this git worktree, run CMD, check out (unless --keep)")
@@ -171,16 +190,33 @@ class Cli:
     def say(self, text):
         print(f"motel: {text}", file=self.err)
 
+    @staticmethod
+    def receipt_of(view):
+        """The receipt of a cabin record: the desk's own, else built from the record (a desk that predates receipts)."""
+        if not view:
+            return None
+        return view.get("receipt") or cabin_receipt(view)
+
+    def show_receipt(self, cabin, view) -> bool:
+        """Print the cabin's receipt block on stderr. False when the record has no price to show."""
+        lines = render_cabin_receipt(self.receipt_of(view), cabin)
+        for line in lines:
+            print(line, file=self.err)
+        return bool(lines)
+
     def desk_call(self, args) -> tuple:
         """Run the desk and return (exit code, parsed JSON document or {})."""
         if not self.desk_exists():
-            raise Prerequisite(f"the front desk is not installed ({self.desk} is missing)", INSTALL_HINT)
+            raise Prerequisite(f"the front desk is not installed ({self.desk} is missing)", NOT_INSTALLED_HINT)
         proc = self.runner([SUDO, "-n", self.desk, "cabin", *args, "--json"], stdout=subprocess.PIPE, check=False,
                            env=SAFE_ENV)
         try:
             doc = json.loads(proc.stdout or b"{}")
         except ValueError:
             doc = {"ok": False, "error": "unreadable front desk reply", "hint": "motel doctor"}
+        if proc.returncode == 1 and not proc.stdout:   # sudo's own status: the desk never ran, so `motel doctor` cannot help
+            doc = {"ok": False, "error": "the front desk gave no answer (sudo may have refused you: you are probably not in "
+                                         "allow_users)", "hint": NOT_ALLOWED_HINT}
         return proc.returncode, doc
 
     def fail(self, code, doc, want_json):
@@ -278,7 +314,7 @@ class Cli:
         doc = {"schema": SCHEMA, "ok": result == EXIT_OK, "cabin": cabin, "exit_code": result, "kept": kept,
                "released": done.get("state") == "released",
                "hourly_net_eur": (offer or {}).get("total_hourly_net_eur"),
-               "cost_estimate_net_eur": done.get("cost_estimate_net_eur")}
+               "cost_estimate_net_eur": done.get("cost_estimate_net_eur"), "receipt": self.receipt_of(done)}
         hours = (done.get("billing") or {}).get("billed_hours")
         if hours is not None:
             doc["billed_hours"] = hours
@@ -364,13 +400,13 @@ class Cli:
         done = (doc.get("cabin") or {}) if isinstance(doc, dict) else {}
         if rc == EXIT_OK and done.get("state") == "released":
             self.cleanup_keys(cabin)
-            hours = (done.get("billing") or {}).get("billed_hours")
-            self.say(f"released {cabin} · est. cost EUR {done.get('cost_estimate_net_eur')} net"
-                     + ("" if hours is None else f" ({hours} started hour{'' if hours == 1 else 's'} billed)"))
+            if not self.show_receipt(cabin, done):
+                self.say(f"released {cabin}")
             return result, done
         if rc == EXIT_INCOMPLETE and done.get("state") == "cleanup_pending":
             self.say(f"WARNING: checkout of {cabin} is NOT complete (cleanup pending; it still bills until the reaper "
                      f"finishes). The exit status is the command's. Try: motel cabin status {cabin}")
+            self.show_receipt(cabin, done)
             return result, done
         until = done.get("expires_at")
         self.say(f"checkout of {cabin} FAILED ({(doc or {}).get('error', 'failed')}; checkout exit {rc}). The cabin "
@@ -392,12 +428,15 @@ class Cli:
             return rc
         if doc.get("ok") is False or rc not in (0, 9):
             return self.fail(rc, doc, want_json)
+        if verb == "checkout" and isinstance(doc.get("cabin"), dict) and not doc["cabin"].get("receipt"):
+            doc["cabin"]["receipt"] = self.receipt_of(doc["cabin"])      # a desk that predates receipts
         if want_json:
             print(json.dumps(doc, indent=1, sort_keys=True), file=self.out)
         else:
             print(render(verb, doc), file=self.out)
         if verb == "checkout" and (doc.get("cabin") or {}).get("state") == "released":
             self.cleanup_keys(args.cabin)
+            self.show_receipt(args.cabin, doc["cabin"])
         return rc
 
 
@@ -416,7 +455,7 @@ def main(argv=None, **kw) -> int:
     try:
         head, command = split_command(argv)
         if not head or head[0] in ("-h", "--help"):
-            print(__doc__.strip(), file=cli.out)
+            print(build_parser().format_help().rstrip(), file=cli.out)
             return EXIT_OK if head else 2
         args = build_parser().parse_args(head)
         if command and args.verb not in ("run", "ssh"):

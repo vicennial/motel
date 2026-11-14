@@ -243,3 +243,26 @@ def test_bad_input_is_a_usage_error(rig, repo):
     assert run_cli(rig, ["start", str(repo / "missing.toml")], repo)[0] == 2
     assert run_cli(rig, ["status", "not-a-tour"], repo)[0] == 2
     assert run_cli(rig, ["fetch", "t-0000000000", "Bad Guest"], repo)[0] == 2
+
+
+def test_a_finished_tour_ends_wait_and_status_with_a_receipt_on_stderr_and_json_under_receipt(rig, repo, tmp_path):
+    rig.transport.guest = real_guest(tmp_path)
+    tid = run_cli(rig, ["start", write_spec(repo)], repo)[1].strip()
+    code, out, err = run_cli(rig, ["status", tid], repo)                      # not started yet: no receipt
+    assert code == 0 and "receipt" not in err
+    rig.supervise(tid)
+    code, out, err = run_cli(rig, ["wait", tid, "--timeout", "5"], repo)
+    assert code == 0 and "done" in out
+    assert "receipt" not in out                                              # stdout keeps only the tour text
+    assert f"motel: receipt for tour {tid}" in err and "servers left  0" in err and "fixer" in err
+    assert "servers       EUR " in err and "model use     USD " in err and "provider list price" in err
+    code, out, err = run_cli(rig, ["status", tid, "--json"], repo)
+    doc = json.loads(out)
+    receipt = doc["tour"]["receipt"]
+    assert receipt["final"] is True and receipt["servers_left"] == 0 and receipt["currency"] == "EUR"
+    [row] = receipt["guests"]
+    assert row["id"] == "fixer" and row["server_type"] and row["billed_hours"] >= 1 and row["wall_seconds"] >= 0
+    assert row["hourly_net_eur"] and row["cost_net_eur"] == doc["tour"]["guests"][0]["result"]["cost_eur"]
+    assert receipt["servers"]["estimated_total_net_eur"] == doc["tour"]["budget"]["spent_eur"]      # the budget's own settled total
+    assert receipt["model"]["metered_guests"] == 1 and receipt["model"]["usd"] is not None
+    assert "receipt for tour" in err                                          # --json keeps the human block on stderr too

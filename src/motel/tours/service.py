@@ -19,6 +19,7 @@ from datetime import timedelta
 from motel.cabins.errors import Fail
 from motel.cabins.util import iso
 from motel.errors import install_hint
+from motel.receipts import tour_receipt
 from motel.tours import artifacts as art
 from motel.tours import bundle, ownlogin, recovery, spec
 from motel.tours.errors import Incomplete, NotFound, Refused, Usage
@@ -104,6 +105,7 @@ class Service:
                "owner": doc["owner"]["name"], "created_at": doc["created_at"], "finished_at": doc.get("finished_at"),
                "cancel_requested": self.store.cancel_requested(doc["id"]), "counts": counts, "guests": guests,
                "budget": dict(doc["budget"])}
+        out["receipt"] = tour_receipt(out)
         if detail:
             out["supervisor"] = dict(doc["supervisor"])
             out["lost_listeners"] = self._lost_listeners(doc["id"])

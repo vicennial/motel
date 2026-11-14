@@ -20,7 +20,8 @@ import sys
 import tempfile
 
 from motel.cabins.errors import EXIT_ERROR, EXIT_OK, Fail
-from motel.errors import INSTALL_HINT
+from motel.errors import desk_refusal, not_installed
+from motel.receipts import render_tour_receipt, tour_receipt
 from motel.tours import artifacts as art
 from motel.tours import bundle, ownlogin, spec
 from motel.tours.errors import Usage
@@ -46,8 +47,15 @@ class CliParser(argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     common = CliParser(add_help=False, allow_abbrev=False)
     common.add_argument("--json", action="store_true", help="machine-readable output")
-    parser = CliParser(prog="motel tour", allow_abbrev=False,
-                       description="Run a swarm of bounded, non-interactive agent jobs on disposable servers.")
+    parser = CliParser(prog="motel tour", allow_abbrev=False, formatter_class=argparse.RawDescriptionHelpFormatter,
+                       description="EXPERIMENTAL. Run a swarm of bounded, non-interactive agent jobs on disposable servers: one\n"
+                                   "fresh cabin per guest, deleted when the guest finishes. `wait` and `status` end a finished tour\n"
+                                   "with a receipt on stderr (per-guest server cost, model spend, servers left); `--json` has it\n"
+                                   "under `tour.receipt`.",
+                       epilog="examples:\n  motel tour start review.toml     start the tour in the spec; prints the tour id\n"
+                              "  motel tour wait TOUR             wait until every guest has finished, then show the receipt\n"
+                              "  motel tour fetch TOUR GUEST      import the guest's commits as a branch (nothing is merged)\n\n"
+                              "No cloud yet? `motel try --cabin` shows a small tour, offline, with its receipt.")
     sub = parser.add_subparsers(dest="verb", required=True, parser_class=CliParser, metavar="VERB")
     p = sub.add_parser("start", parents=[common], allow_abbrev=False, help="start a tour from a TOML or JSON spec")
     p.add_argument("spec", metavar="FILE|-", help="the spec file, or - for standard input")
@@ -82,8 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
 def default_runner(args: list, stdin: bytes | None = None) -> tuple:
     sudo = next((s for s in SUDO_CANDIDATES if os.path.exists(s)), None)
     if sudo is None or not os.path.exists(DESK):
-        from motel.errors import NotSetUp
-        raise NotSetUp("the motel front desk is not installed on this host", INSTALL_HINT)
+        raise not_installed()
     extra = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
     proc = subprocess.run([sudo, "-n", DESK, "tour", *args], capture_output=True, env=SAFE_ENV, shell=False, check=False, **extra)
     return proc.returncode, proc.stdout, proc.stderr
@@ -107,9 +114,9 @@ class Cli:
             doc = doc if isinstance(doc, dict) else None
         except ValueError:
             doc = None
+        if not doc and code != 0 and b"sudo" in (stderr or b""):     # no answer at all, and sudo's own words: the desk never ran
+            raise desk_refusal((stderr or b"").decode("utf-8", "replace"))
         if doc is None and code != 0:
-            if b"sudo" in (stderr or b""):
-                raise Fail("sudo refused to run the front desk for you (you may not be in allow_users)", "motel doctor")
             return code, None, stdout
         return code, doc, stdout
 
@@ -191,9 +198,17 @@ class Cli:
         self.emit(doc, "\n".join(rows) or "no tours", want_json)
         return code
 
+    def show_receipt(self, tour: dict) -> None:
+        """A finished tour ends with its receipt on stderr (stdout keeps only the tour text or JSON)."""
+        receipt = tour.get("receipt") or tour_receipt(tour)
+        if receipt.get("final"):
+            for line in render_tour_receipt(receipt, tour.get("id")):
+                print(line, file=self.err)
+
     def status(self, args, want_json: bool) -> int:
         code, doc = self.call(["status", _tour(args.tour)])
         self.emit(doc, render_tour(doc["tour"]), want_json)
+        self.show_receipt(doc["tour"])
         return code
 
     def wait(self, args, want_json: bool) -> int:
@@ -201,11 +216,13 @@ class Cli:
         self.emit(doc, render_tour(doc["tour"]), want_json)
         if not doc.get("satisfied", True):
             self.say(f"still running after {args.timeout:g}s. Try: motel tour wait {args.tour}")
+        self.show_receipt(doc["tour"])
         return code
 
     def cancel(self, args, want_json: bool) -> int:
         code, doc = self.call(["cancel", _tour(args.tour)])
         self.emit(doc, render_tour(doc["tour"]), want_json)
+        self.show_receipt(doc["tour"])
         return code
 
     def result(self, args, want_json: bool) -> int:
