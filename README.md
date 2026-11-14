@@ -154,7 +154,7 @@ Hetzner: the page's hourly "from" price (EUR 0.0953, with IPv4, no VAT) at 1.10 
 **When a managed sandbox is the better choice:**
 
 - Jobs shorter than about 10 minutes. Hetzner bills each started hour, so a 5-minute cabin costs a full hour.
-- You need millisecond cold starts. A cabin takes tens of seconds to boot.
+- You need millisecond cold starts. A cabin takes tens of seconds or more to boot.
 - You need memory snapshot, fork or pause.
 - You run hostile or untrusted code and want a hardened isolation boundary.
 - Your sessions are mostly idle and the service bills active CPU only.

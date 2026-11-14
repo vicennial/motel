@@ -11,8 +11,22 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "vicennial" }]
-keywords = ["agents", "claude-code", "codex", "hetzner", "scratch-space", "ephemeral", "volumes", "ttl"]
-classifiers = ["Development Status :: 3 - Alpha", "Environment :: Console", "Operating System :: POSIX :: Linux"]
+keywords = ["agents", "ai-agents", "claude-code", "codex", "hetzner", "sandbox", "ephemeral-servers", "cabins", "scratch-space",
+            "ephemeral", "volumes", "ttl", "mcp", "omnigent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = []
 
 [project.scripts]
@@ -20,6 +34,10 @@ motel = "motel.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/vicennial/motel"
+Documentation = "https://github.com/vicennial/motel/tree/main/docs"
+Repository = "https://github.com/vicennial/motel"
+Changelog = "https://github.com/vicennial/motel/blob/main/CHANGELOG.md"
+Issues = "https://github.com/vicennial/motel/issues"
 
 # src/omnigent holds only the optional Omnigent sandbox provider (src/omnigent/community/sandbox/motel). It carries no
 # __init__.py on purpose: Omnigent owns omnigent/, omnigent/community/ and omnigent/community/sandbox/, and a copy here
