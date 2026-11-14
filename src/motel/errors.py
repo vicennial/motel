@@ -24,6 +24,10 @@ def install_hint(args: str = "") -> str:
 
 
 INSTALL_HINT = install_hint()
+# For a user who has not installed anything: the install command, and the demo that needs no install.
+NOT_INSTALLED_HINT = install_hint("--users $USER") + "; to see motel work first, with nothing installed: motel try"
+NOT_ALLOWED_HINT = ("ask the host admin to add you to allow_users in /etc/motel/motel.toml, then to run: "
+                    "sudo uvx --from motel motel install --upgrade")
 
 
 class MotelError(Exception):
@@ -102,3 +106,18 @@ class NotSetUp(MotelError):
 
 class InventoryIncomplete(MotelError):
     code = EXIT_INVENTORY
+
+
+def not_installed() -> NotSetUp:
+    """The error for a host that has no front desk: how to install it, or how to see motel work first (exit 8)."""
+    return NotSetUp("the motel front desk is not installed on this host", NOT_INSTALLED_HINT)
+
+
+def desk_refusal(stderr: str = "") -> MotelError:
+    """The error for a front desk call that ``sudo`` refused (the desk is installed: callers check that first).
+
+    Never points back at the command that just failed: it says what to ask the host admin for."""
+    if "no new privileges" in (stderr or "").lower():
+        return SystemFault("sudo cannot raise privileges here (this shell runs with no-new-privileges, as some containers do)",
+                           "run motel from a normal shell on the host, not from inside the container")
+    return SystemFault("sudo refused to run the front desk for you (you are probably not in allow_users)", NOT_ALLOWED_HINT)

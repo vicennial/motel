@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -195,7 +196,7 @@ def test_a_busy_checkout_is_retried_with_a_short_backoff_then_succeeds(tmp_path)
     clock = Time()
     runner = Runner(checkout_script=[BUSY, BUSY, RELEASED])
     rc, _o, err, runner = main(tmp_path, ["run", "--", "true"], runner=runner, clock=clock)
-    assert rc == 0 and len(checkouts(runner)) == 3 and f"released {LEASE}" in err
+    assert rc == 0 and len(checkouts(runner)) == 3 and f"receipt for cabin {LEASE} (released)" in err
     assert clock.sleeps == [2, 4] and "FAILED" not in err
 
 
@@ -386,9 +387,11 @@ def test_run_json_ends_with_one_object_with_the_cabin_the_exit_code_and_the_cost
     rc, out, err, runner = main(tmp_path, ["run", "--json", "--", "make", "test"], ssh_rc=3)
     assert rc == 3
     doc = json.loads(out.strip().splitlines()[-1])
+    receipt = doc.pop("receipt")      # the stable `receipt` key: see test_cabin_receipt.py for its shape
     assert doc == {"schema": "motel/v1", "ok": False, "cabin": LEASE, "exit_code": 3, "kept": False, "released": True,
                    "hourly_net_eur": "0.0318", "cost_estimate_net_eur": "0.0100"}
-    assert "released" in err  # the human lines stay on stderr
+    assert receipt["final"] is True and receipt["servers_left"] == 0 and receipt["estimated_total_net_eur"] == "0.0100"
+    assert "servers left  0" in err  # the human lines stay on stderr
     ssh = runner.by("/usr/bin/ssh")[0][1]
     assert "stdout" not in ssh and "stderr" not in ssh  # the command's own streams are inherited, never captured or merged
 
@@ -397,7 +400,7 @@ def test_run_json_success_and_keep(tmp_path):
     rc, out, _e, _r = main(tmp_path, ["run", "--json", "--keep", "--", "true"])
     doc = json.loads(out.strip().splitlines()[-1])
     assert rc == 0 and doc["ok"] is True and doc["kept"] is True and doc["released"] is False
-    assert doc["cost_estimate_net_eur"] is None
+    assert doc["cost_estimate_net_eur"] is None and doc["receipt"] is None   # nothing was released: no receipt
 
 
 def test_a_json_flag_after_the_double_dash_belongs_to_the_command(tmp_path):
@@ -461,14 +464,82 @@ BILLED = (0, {"ok": True, "cabin": dict(VIEW, state="released", cost_estimate_ne
                                          billing={"granularity": "started_hour", "billed_hours": 2})})
 
 
-def test_run_states_the_billed_hours_in_its_release_line_and_json_summary(tmp_path):
+def test_run_states_the_billed_hours_in_its_receipt_and_json_summary(tmp_path):
     rc, out, err, _r = main(tmp_path, ["run", "--json", "--", "true"], runner=Runner(checkout_script=[BILLED]))
     assert rc == 0
-    assert f"released {LEASE} \u00b7 est. cost EUR 0.0318 net (2 started hours billed)" in err
-    assert json.loads(out.strip().splitlines()[-1])["billed_hours"] == 2
+    assert "billed        2 started hours" in err and "est. total    EUR 0.0318 net" in err
+    doc = json.loads(out.strip().splitlines()[-1])
+    assert doc["billed_hours"] == 2 and doc["receipt"]["billed_hours"] == 2 and doc["receipt"]["basis"] == "started_hours"
 
 
-def test_run_without_hourly_billing_prints_the_old_release_line_and_no_billed_hours_key(tmp_path):
+def test_run_without_hourly_billing_says_so_in_its_receipt_and_has_no_billed_hours_key(tmp_path):
     rc, out, err, _r = main(tmp_path, ["run", "--json", "--", "true"])
-    assert f"released {LEASE} \u00b7 est. cost EUR 0.0100 net\n" in err and "started hour" not in err
-    assert "billed_hours" not in json.loads(out.strip().splitlines()[-1])
+    assert "billed        by the time used" in err and "started hour" not in err
+    doc = json.loads(out.strip().splitlines()[-1])
+    assert "billed_hours" not in doc and doc["receipt"]["billed_hours"] is None and doc["receipt"]["basis"] == "prorated"
+
+
+# ---------------------------------------------------------------- receipts, help and first-run errors
+
+def test_checkout_prints_the_receipt_on_stderr_and_keeps_stdout_to_the_render(tmp_path):
+    rc, out, err, _r = main(tmp_path, ["checkout", LEASE], runner=Runner(checkout_script=[BILLED]))
+    assert rc == 0
+    assert f"motel: receipt for cabin {LEASE} (released)" in err and "billed        2 started hours" in err
+    assert "servers left  0" in err and "receipt" not in out           # stdout is the render, unchanged
+
+
+def test_checkout_json_has_the_receipt_under_the_cabin_and_one_object_on_stdout(tmp_path):
+    rc, out, err, _r = main(tmp_path, ["checkout", LEASE, "--json"], runner=Runner(checkout_script=[BILLED]))
+    doc = json.loads(out)                                               # exactly one JSON object, nothing else
+    assert rc == 0 and doc["cabin"]["receipt"]["billed_hours"] == 2 and doc["cabin"]["receipt"]["servers_left"] == 0
+    assert "receipt for cabin" in err
+
+
+def test_a_desks_own_receipt_is_shown_as_it_is(tmp_path):
+    own = {"server_type": "cpx32", "vcpus": 4, "memory_gb": 8.0, "location": "fsn1", "disk_gb": None, "wall_seconds": 61,
+           "billed_hours": 1, "basis": "started_hours", "hourly_net_eur": "0.0318", "estimated_total_net_eur": "0.0318",
+           "currency": "EUR", "final": True, "servers_left": 0}
+    reply = (0, {"ok": True, "cabin": dict(VIEW, state="released", cost_estimate_net_eur="9.9999", receipt=own)})
+    rc, out, err, _r = main(tmp_path, ["run", "--json", "--", "true"], runner=Runner(checkout_script=[reply]))
+    assert "cpx32 (4 vCPU, 8 GB RAM) in fsn1" in err and "wall time     1m 01s" in err
+    assert json.loads(out.strip().splitlines()[-1])["receipt"] == own
+
+
+def test_a_cabin_whose_cleanup_is_pending_prints_its_receipt_with_one_server_left(tmp_path):
+    rc, _o, err, _r = main(tmp_path, ["run", "--", "true"], runner=Runner(checkout_script=[PENDING]))
+    assert "NOT complete" in err and "servers left  1" in err and "servers left  0" not in err
+
+
+def test_the_help_is_real_text_not_the_module_docstring(tmp_path):
+    rc, out, err, _r = main(tmp_path, ["--help"])
+    assert rc == 0 and err == ""
+    assert "``main(argv)``" not in out and "examples:" in out and "receipt" in out and "deletion is final" in out
+    for verb in ("run", "checkin", "ls", "status", "extend", "checkout", "ssh", "doctor"):
+        assert re.search(rf"^    {verb}\b", out, re.M), verb
+    assert "motel try --cabin" in out
+    rc, out, err, _r = main(tmp_path, [])                               # no verb: the same help, exit 2
+    assert rc == 2 and "examples:" in out
+
+
+def test_without_the_front_desk_the_error_says_how_to_install_or_try_the_demo(tmp_path):
+    out, err = io.StringIO(), io.StringIO()
+    rc = cli.main(["ls"], out=out, err=err, root=str(tmp_path / "state"), desk=str(tmp_path / "no-such-desk"))
+    line = err.getvalue()
+    assert rc == 8 and "front desk is not installed" in line
+    assert "Try: sudo uvx --from motel motel install --users $USER" in line and "motel try" in line
+    assert "Try: motel doctor" not in line
+
+
+@pytest.mark.parametrize("reply", [Proc(1, b""), Proc(1, b"not json")])
+def test_a_desk_call_sudo_never_ran_does_not_send_the_user_back_to_the_failing_command(tmp_path, reply):
+    class Refused(Runner):
+        def __call__(self, argv, **kw):
+            if argv[:2] == ["/usr/bin/sudo", "-n"]:
+                return reply
+            return super().__call__(argv, **kw)
+    rc, out, err, _r = main(tmp_path, ["ls", "--json"], runner=Refused())
+    doc = json.loads(out)
+    if reply.stdout == b"":
+        assert "allow_users" in doc["error"] and "allow_users in /etc/motel/motel.toml" in doc["hint"]
+    else:
+        assert doc["error"] == "unreadable front desk reply"            # a reply that is not JSON keeps the old answer

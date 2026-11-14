@@ -612,7 +612,8 @@ class UpgradeFromItselfTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stdout)
         self.assertIn("installed copy itself", proc.stderr)
         self.assertIn("version 0.1.0", proc.stderr)
-        self.assertIn("uvx --from motel==", proc.stderr)
+        self.assertIn("sudo uvx --from motel motel install --upgrade", proc.stderr)   # a command that works as printed
+        self.assertNotIn("X.Y.Z", proc.stderr)
         self.assertEqual((installed_lib / "motel/desk.py").read_text(), before)
 
     def test_an_upgrade_from_another_source_prints_both_versions(self):

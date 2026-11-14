@@ -16,6 +16,15 @@ class InstallHintTest(unittest.TestCase):
                 for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1) if BARE.search(line)]
         self.assertEqual([], hits, "use motel.errors.INSTALL_HINT (or install_hint(args)) instead")
 
+    def test_no_source_file_prints_a_version_placeholder_the_user_would_have_to_edit(self):
+        hits = [f"{path.relative_to(SRC)}:{n}" for path in sorted(SRC.rglob("*.py"))
+                for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1) if "X.Y.Z" in line]
+        self.assertEqual([], hits, "print a command that works as printed: the running version, or no pin")
+
+    def test_the_not_installed_hint_is_the_install_command_plus_the_offline_demo(self):
+        self.assertTrue(errors.NOT_INSTALLED_HINT.startswith(errors.install_hint("--users $USER")))
+        self.assertTrue(errors.NOT_INSTALLED_HINT.endswith("motel try"))
+
     def test_the_shared_hint_names_the_uvx_route_and_the_root_owned_clone(self):
         self.assertIn("sudo uvx --from motel motel install", errors.INSTALL_HINT)
         self.assertIn("(or install.sh from a root-owned clone; see docs/install.md)", errors.INSTALL_HINT)

@@ -28,6 +28,7 @@ from decimal import Decimal
 from motel.cabins.controller import EXPIRY_GRACE
 from motel.cabins.errors import CheckinAborted, Fail, PolicyRefused, Usage
 from motel.cabins.util import OWNER_RE, iso
+from motel.receipts import cabin_receipt
 from motel.tours import artifacts as art
 from motel.tours import ownlogin
 from motel.tours.state import (
@@ -129,6 +130,7 @@ class Ctx:
     notes: list = field(default_factory=list)
     partial: bool = False
     view: dict | None = None
+    final_view: dict | None = None      # the cabin record after checkout (else the checkin one): the receipt's source
     lease_id: str | None = None
     start_time: object = None
     runner_log: str | None = None
@@ -723,6 +725,7 @@ class AttemptRunner:
                 rec["cleanup_error"] = getattr(exc, "message", type(exc).__name__)
         else:
             clean = "deleted"
+        ctx.final_view = view
         cost = None
         try:
             if view and view.get("cost_estimate_net_eur") is not None:
@@ -882,5 +885,6 @@ class AttemptRunner:
         atomic_write(os.path.join(base, "result.json"), json.dumps(record, sort_keys=True, indent=1))
         ctx.saved_summary = {"attempt": ctx.rec["id"], "branch": record["branch"], "exit_code": record["runner_reported"]["exit_code"],
                              "bundle": bundle is not None, "changed_files": (ctx.inspected or {}).get("changed_total", 0), "artifacts": len(artifacts),
-                             "cost_eur": str(cost), "usd": usage.get("usd"), "auth": g["auth"], "partial": ctx.partial,
-                             "violations": len(ctx.violations)}
+                             "cost_eur": str(cost), "usd": usage.get("usd"), "metered": usage.get("metered"), "auth": g["auth"],
+                             "partial": ctx.partial, "violations": len(ctx.violations),
+                             "cabin": cabin_receipt(ctx.final_view, self.env.clock()) if ctx.final_view else None}
