@@ -42,8 +42,8 @@ motel runs **on the server that needs the disk**. It attaches temporary Hetzner 
 
    ```bash
    sudo git clone https://github.com/vicennial/motel /usr/local/src/motel && sudo /usr/local/src/motel/install.sh --users $USER --provider hetzner
-   # or, from PyPI (X.Y.Z is the release):
-   sudo uvx --from motel==X.Y.Z motel install --users $USER --provider hetzner
+   # or, from PyPI:
+   sudo uvx --from motel motel install --users $USER --provider hetzner
    ```
 
    The installer copies code that root will run, so it refuses a source that anyone else can change: clone into
@@ -82,7 +82,7 @@ motel runs **on the server that needs the disk**. It attaches temporary Hetzner 
 Cost: you pay Hetzner for volumes while they exist, roughly EUR 0.05 per GB-month. Caps are checked before any
 create call (defaults: 3 floors, 500 GB per floor, 1000 GB total, EUR 30 per month projected).
 
-No cloud account? On a Linux machine where you have root, `sudo uvx --from motel==X.Y.Z motel install --provider local
+No cloud account? On a Linux machine where you have root, `sudo uvx --from motel motel install --provider local
 && sudo motel-desk setup local` uses sparse loop files instead of cloud volumes. Everything else behaves the same. See
 [providers](providers.md).
 
@@ -148,7 +148,7 @@ exit code tells you the kind of failure:
 | 5 | Provider or system error: the cloud API failed, a mount or resize failed, or something internal broke | `motel doctor`. Check the token, the network and the cloud status page. A lost response is reconciled by housekeeping, so check `motel ls` before you retry a checkin. |
 | 6 | A **safety guard** refused: the volume or room did not pass the ownership checks | Stop. Do not work around it. Read the message, run `motel doctor`, and report it if it persists. There is no force flag, on purpose. |
 | 7 | Not found: no such room | `motel ls --mine`. Rooms in lost & found are listed too; a purged room is gone. |
-| 8 | Not set up: the front desk, the config or the setup receipt is missing | `sudo uvx --from motel==X.Y.Z motel install` (or the root-owned clone, step 3) and then `sudo motel-desk setup hetzner` (or `local`), then `motel doctor`. |
+| 8 | Not set up: the front desk, the config or the setup receipt is missing | `sudo uvx --from motel motel install` (or the root-owned clone, step 3) and then `sudo motel-desk setup hetzner` (or `local`), then `motel doctor`. |
 | 9 | Inventory incomplete: the provider returned a partial list of volumes, so motel refuses to act on a guess | Retry in a minute. If it persists, check the token's permissions and `motel doctor`. |
 
 With `--json`, every failure is one object: `{"ok": false, "error": "...", "hint": "...", "code": N}`. See
