@@ -1,0 +1,50 @@
+name: Bug report
+description: Something does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you post, remove tokens, real hostnames, IP addresses and home folder paths from everything you paste.
+        For a security problem, use private reporting instead: see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we reproduce it?
+      description: The exact commands, in order. A run against the fake or local provider is ideal.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The full output, the exit code, and `motel doctor` if it is about an installation or a provider.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: motel version
+      description: The output of `motel --version`.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Operating system, Python version and provider
+      placeholder: Ubuntu 24.04, Python 3.12, hetzner
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options: [rooms, cabins, tours, Omnigent provider, MCP server or skill, installer, docs, other]
+    validations:
+      required: true

@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a change or a new capability.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do, and what stops you?
+      description: Describe the job first, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like motel to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options: [rooms, cabins, tours, Omnigent provider, MCP server or skill, installer, a new cloud provider, docs, other]
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        motel's runtime uses the standard library only, and its root-owned helper fails closed. A request that needs a
+        new dependency or weakens a guard is unlikely to be accepted. Say so if your idea needs one.
