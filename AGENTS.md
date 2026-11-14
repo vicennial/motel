@@ -20,8 +20,6 @@ motel should read `skills/motel/SKILL.md` and `docs/agents.md`.
 | `tests/` | `tests/mcp/` for the MCP server, `tests/tours/` and `tests/concierge/` for tours; the rest cover the core. |
 | `server.json` | MCP registry manifest. |
 
-Some of these paths land with the core branch; check what exists before assuming.
-
 ## Run the checks
 
 ```bash
