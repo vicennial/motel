@@ -4,29 +4,42 @@
 
 **Disk and servers by the hour, for agents.**
 
-Your agent runs out of disk at the worst moment. `motel checkin 500G` gives it a private folder on a temporary
-cloud volume attached to your own server. The agent never sees your cloud token. When the stay is over,
-housekeeping cleans up, with a day of lost & found.
+One command rents a whole server in your own cloud account, runs the job and deletes the server:
+`motel cabin run --for 1h -- make test`. `motel checkin 500G` adds temporary disk to the machine you already have.
+Tours run N agents on N fresh servers, with a budget each. It also works as an Omnigent sandbox provider.
 
 ```bash
-uvx motel try                                  # watch one full stay: offline, no root, no cloud
-sudo uvx --from motel==X.Y.Z motel install --users $USER   # install the front desk (X.Y.Z: the release; docs/install.md)
-sudo motel-desk setup hetzner && motel doctor  # connect your Hetzner project, then check it
+uvx motel try                                       # one full stay: offline, no root, no cloud
+sudo uvx --from motel motel install --users $USER   # install the front desk
+sudo motel-desk setup hetzner && motel doctor       # connect Hetzner, then check
 ```
 
-## What is a room, and what is a cabin?
+## What are a cabin, a tour and a room?
+
+**Status:** experimental, Hetzner only. The live harness has run rooms, cabins (`ssh-allowlist` mode, one image and
+server type), tours of command guests and one Omnigent session against real Hetzner projects. Agent guests that call a
+model, `tailscale` mode and every other cloud are tested against fakes only.
 
 | Word | What it is | Status |
 |---|---|---|
+| **Cabin** | A disposable server in your own cloud project: check in, use over SSH or `cabin run`, check out. Checkout deletes it, with no restore. | Experimental, Hetzner only |
+| **Tour** | N bounded agent jobs, each on its own fresh cabin, with a budget each. Commits come back as a branch you review. | Experimental, Hetzner only |
 | **Room** | A private `0700` directory on a temporary cloud volume, with a size and a checkout time. | Core feature |
 | **Floor** | The shared volume that holds many rooms, attached to your host. A **suite** is a room with a floor of its own. | Core feature |
-| **Cabin** | A disposable server you check in, use over SSH and check out. Checkout deletes it, with no restore. | Experimental, Hetzner only |
 | **Front desk** | `motel-desk`, the small root-owned helper that holds the token and does every cloud and mount operation. | Core feature |
-| **Housekeeping** | The reaper. Runs every 10 minutes: expires rooms, empties lost & found, retires empty floors. | Core feature |
+| **Housekeeping** | The reaper. Runs every 10 minutes: deletes expired cabins, expires rooms, empties lost & found, retires empty floors. | Core feature |
 | **No vacancy** | A cap refusal (exit 3). It happens before any cloud call. | Core feature |
 
-<!-- GIF placeholder: docs/assets/try.gif, the `motel try` tour recorded at 100 columns -->
-> The `motel try` tour as a GIF goes here. Until it lands, run `uvx motel try --fast` to see the same story.
+<p align="center"><img src="https://raw.githubusercontent.com/vicennial/motel/main/docs/assets/try.gif" alt="The motel try tour: check in a room, write a file, forget it, watch it expire and be restored, hit no vacancy, check out" width="720"></p>
+
+## How do I run a job on a fresh server?
+
+```console
+$ motel cabin run --for 1h -- make test     # check in, sync this git checkout, run, check out
+```
+
+The server lives in your own Hetzner project. The exit status is the command's. Setup (a dedicated project, a
+`[cabins]` table, a token) takes four steps: [first cabin](https://github.com/vicennial/motel/blob/main/docs/cabins.md#first-cabin).
 
 ## How do I give an agent 200 GB for an afternoon?
 
@@ -57,8 +70,9 @@ kills anything. See [docs/lifecycle.md](https://github.com/vicennial/motel/blob/
 No. Only `motel-desk` reads `/etc/motel/credentials/hetzner.token` (root, `0600`). The unprivileged `motel`
 command never sees it. The token travels only from a hidden prompt or a root-owned file to the desk.
 
-motel limits accidents and runaway cost. It is **not a sandbox**, and it does not protect against a hostile root
-user on the host: anyone with root can read the token.
+motel limits accidents and runaway cost. It does not protect against a hostile root user on the host: anyone with
+root can read the token. Rooms are folders on your own host and are not a sandbox. What a cabin or a tour isolates, and
+what it does not: [Do I still need a managed sandbox?](#do-i-still-need-a-managed-sandbox)
 
 **What the sudo rule allows.** `motel` reaches the front desk through one `sudo` rule, which lets the users in
 `allow_users` run seven verbs as root: `checkin`, `ls`, `status`, `extend`, `checkout`, `restore` and `doctor`.
@@ -93,45 +107,75 @@ EUR 0.0017 per GB-day). Caps are checked and reserved before any create or resiz
 from size times price, not a limit the provider enforces. Lost & found keeps billing until the floor is retired.
 
 Hetzner bills servers and volumes **per started hour** from creation (a cabin deleted after five minutes costs a full
-hour, one deleted at minute 61 costs two), so deleting something early inside a paid hour saves nothing, and an explicit
-checkout does not refund it. motel therefore keeps an idle cabin that has been sealed, and an empty shared floor, until a
-release window just before the next billed hour, and shows started hours in its cost estimates. TTLs and explicit cabin
-checkouts are never delayed. `checkout --now` on a room purges its data at once; only the now-empty floor waits for its
-window (a `--suite` floor does not wait). See [docs/cabins.md](docs/cabins.md#hourly-billing) and [docs/providers.md](docs/providers.md#how-each-cloud-bills).
+hour), so deleting early inside a paid hour saves nothing. motel therefore keeps an idle cabin, and an empty shared floor,
+until a release window just before the next billed hour, and shows started hours in its cost estimates. TTLs and explicit
+cabin checkouts are never delayed. See [docs/cabins.md](docs/cabins.md#hourly-billing) and
+[docs/providers.md](docs/providers.md#how-each-cloud-bills). For a comparison with managed sandboxes, see
+[below](#do-i-still-need-a-managed-sandbox).
 
 ## Can I try it without a cloud account?
 
 Yes. `uvx motel try` needs nothing: no root, no cloud, no config. For a real run without a cloud, use the local
-provider (sparse loop files): `sudo uvx --from motel==X.Y.Z motel install --provider local && sudo motel-desk setup local`.
+provider (sparse loop files): `sudo uvx --from motel motel install --provider local && sudo motel-desk setup local`.
 
 ## Which clouds work?
 
 | Provider | Status | Notes |
 |---|---|---|
-| **Hetzner Cloud** | Primary, live-verified: the live harness runs rooms, cabins and command-guest tours against real Hetzner projects ([details](https://github.com/vicennial/motel/blob/main/docs/providers.md)). | Rooms and cabins |
+| **Hetzner Cloud** | Primary, live-verified ([details](https://github.com/vicennial/motel/blob/main/docs/providers.md)) | Rooms, cabins, tours |
 | **local** (loop files) | Works, for testing | Needs root, `losetup`, `mkfs.ext4`. No cloud, no token |
 | fake (in memory) | For tests and `motel try` | The reference for writing your own adapter |
-| DigitalOcean (`digitalocean`), Linode (`linode`), Vultr (`vultr`), Scaleway (`scaleway`) | **Beta**: tested against fakes only, no live run | API token, typed once at `sudo motel-desk setup <name>`. These clouds hand out blank volumes, so motel formats one only after proving it blank. [Per-provider pages](https://github.com/vicennial/motel/tree/main/docs/providers) say what is unverified |
-| AWS EBS (`aws`), GCP Persistent Disk (`gcp`), Azure Managed Disks (`azure`) | **Beta**: tested against fakes only, no live run | No token: motel uses the instance role, service account or managed identity of the host, so IAM conditions and roles can narrow the credentials, which Hetzner cannot |
+| DigitalOcean, Linode, Vultr, Scaleway | **Beta**: tested against fakes only, no live run | API token, typed once at `sudo motel-desk setup <name>` |
+| AWS EBS, GCP Persistent Disk, Azure Managed Disks | **Beta**: tested against fakes only, no live run | No token: motel uses the host's instance role, service account or managed identity, so IAM can narrow the credentials |
 
-"Beta" means nobody has run it against a real account yet. Treat the first live run as a supervised test on a
-scratch project.
+"Beta" means nobody has run it against a real account yet. Treat the first live run as a supervised test on a scratch
+project. [Per-provider pages](https://github.com/vicennial/motel/tree/main/docs/providers) say what is unverified.
 
-## How is this different from ...?
+## Do I still need a managed sandbox?
 
-Short and honest. The other tools are good at things motel does not try to do. Facts below come from each
-project's own public docs, read on 2026-11-09; check them for anything you rely on.
+Sometimes. For long jobs on a whole machine, a cabin costs much less. For short jobs or hostile code, use a managed sandbox.
+
+**What a cabin is.** A full VM in your own cloud project, with a TTL, a price cap, a dead-man timer and a reaper that
+deletes it from outside. You pay the cloud's price, with no markup.
+
+**Cost.** At list prices read on 2026-11-14, a cabin is roughly 5x to 8x cheaper per hour than E2B or Daytona for
+sustained work at 8 to 16 vCPU. Sources, method and more sizes:
+[docs/cost.md](https://github.com/vicennial/motel/blob/main/docs/cost.md).
+
+| 8 vCPU, 16 GB, one hour | List price | Times Hetzner |
+|---|---|---|
+| [Hetzner](https://www.hetzner.com/cloud/regular-performance) CPX42 (a cabin) | USD 0.105 | 1x |
+| [Daytona](https://www.daytona.io/pricing) (E2B has the same rates, but sells at most 8 vCPU and 8 GiB) | USD 0.66 | 6.3x |
+| [Modal](https://modal.com/pricing) Sandboxes | USD 0.95 | 9x |
+| [Fly.io](https://docs.fly.io/about/pricing) Machines, performance-8x | USD 0.37 | 3.5x |
+
+Hetzner: the page's hourly "from" price (EUR 0.0953, with IPv4, no VAT) at 1.10 USD per EUR.
+
+**When a managed sandbox is the better choice:**
+
+- Jobs shorter than about 10 minutes. Hetzner bills each started hour, so a 5-minute cabin costs a full hour.
+- You need millisecond cold starts. A cabin takes tens of seconds to boot.
+- You need memory snapshot, fork or pause.
+- You run hostile or untrusted code and want a hardened isolation boundary.
+- Your sessions are mostly idle and the service bills active CPU only.
+- You want zero operations work: no project, token, firewall or reaper to run.
+
+**Isolation, exactly.**
+
+- A cabin is a separate machine, so the job is off your host. But the guest user has sudo and outbound HTTP and HTTPS,
+  so anything you sync to a cabin can be copied out. Sync only what you would hand to its user
+  ([cabins: honest limits](https://github.com/vicennial/motel/blob/main/docs/cabins.md#honest-limits)).
+- A tour guest is a disposable server, not a sandbox for your secrets beyond what the concierge proxy guarantees: a
+  real API key stays with the proxy, but the agent can spend its placeholder up to `budget_usd`, and it can read
+  everything in the repository bundle ([tours: what is not protected](https://github.com/vicennial/motel/blob/main/docs/tours.md#what-is-not-protected)).
+- Rooms are folders on your own host. They are not a sandbox at all.
+
+**Other tools** (facts from their public docs, read on 2026-11-09):
 
 | | What it is | Where motel differs |
 |---|---|---|
-| [E2B](https://docs.e2b.dev/) | Hosted cloud sandboxes (fast Linux VMs created on demand) with Python and JavaScript SDKs. | E2B is an isolated computer for running agent code. motel gives an agent **disk on your own host**: it does not isolate or run the code. Different problem. |
-| [Daytona](https://www.daytona.io/docs/en/) | Sandboxes with their own kernel, filesystem and network; starts in under 90 ms; SDKs in five languages. | Same split. If you need to run untrusted code, use a sandbox. If your own machine is out of disk, motel adds temporary volumes to it. |
-| [Modal Sandboxes](https://modal.com/docs/guide/sandboxes) | Secure containers (gVisor or a VM) on Modal's platform; default 5 minute life, up to 24 hours; Volumes for storage. | Runs on Modal's infrastructure and bills there. motel runs on your server, bills your cloud account directly, and has no code-execution layer. |
-| [crabbox](https://crabbox.sh/) | MIT-licensed CLI that leases a remote machine, syncs your repo, runs a command and streams output; many providers; optional broker; TTLs and spend caps. | The closest in spirit (TTL, caps, agents). crabbox moves **your command to a remote box**. motel moves **a folder of disk to your box**, so the work stays where it is. motel also keeps a guard list, lost & found and a root-owned helper. |
-| `terraform` / `hcloud` | The full cloud APIs. | They can do everything motel does and more, with the token in the agent's reach and no expiry. motel is the small, opinionated layer: strict ownership checks, TTLs that clean up on their own, and a token the agent never sees. |
-
-If you want a sandbox, pick a sandbox. If you want your agent to stop failing with "No space left on device" and not
-leave a bill behind, that is motel.
+| [crabbox](https://crabbox.sh/) | MIT-licensed CLI that leases a remote machine, syncs your repo, runs a command and streams output; many providers; optional broker; TTLs and spend caps. | The closest in spirit: both rent a machine for one command. motel is Hetzner only, and adds a root-owned helper that holds the token, an ownership guard, a reaper that deletes from outside, tours, and rooms for disk. |
+| `terraform` / `hcloud` | The full cloud APIs. | They can create the same servers and more, with the token in the agent's reach and nothing that deletes a server the agent forgot. motel is the thin layer: TTLs, a price cap, a reaper, and a token the agent never sees. |
 
 ## Can I use it from Claude Code, Codex or Cursor?
 
@@ -196,10 +240,7 @@ hour on a cloud that bills per started hour.
 **Does it work on macOS or Windows?** The front desk needs Linux (mounts, `losetup`, `/proc`). `motel try` is plain
 Python (no mounts, no root) and should run on any Unix with Python 3.11+; it is tested on Linux.
 
-**Are the cabins ready?** Experimental. They are Hetzner only and have been exercised against real Hetzner projects by
-the live harness, but not in every corner case. Use a dedicated empty project and a low price cap. See [docs/cabins.md](https://github.com/vicennial/motel/blob/main/docs/cabins.md).
-
-**What are the limits?** motel is not a sandbox. Room size is a packing hint: a room can fill its floor (quotas are
+**What are the limits?** A room is a folder on your host, not a sandbox. Room size is a packing hint: a room can fill its floor (quotas are
 planned). The busy check does not see into overlay or other stacked filesystems whose layers sit inside a room.
 
 ## Docs
@@ -224,8 +265,8 @@ standard library only at runtime, no root or network in tests, fail closed, and 
 in the tree.
 
 ```bash
-uvx --with pytest python -m pytest tests -q
-uvx ruff check .
+uv run --extra dev pytest
+uv run --extra dev ruff check .
 ```
 
 ## License
