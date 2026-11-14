@@ -1,0 +1,747 @@
+# List prices used by bench/cost.py. Read from the vendors' public pages on 2026-11-14.
+#
+# Rules for this file:
+# - A number appears here only if it was read from a vendor page. Arithmetic is done by cost.py, not here.
+# - rates keep the vendor's own unit (for example "vcpu-second" or "core-second"); cost.py converts them.
+# - verified = false means at least one input the calculator uses is unconfirmed. The reason is in
+#   unverified_items. cost.py marks such rows with * and prints the reasons under the table.
+# - A list price is not a measured price. Discounts, credits, committed use and taxes are not applied.
+
+[meta]
+read_date = "2026-11-14"
+# The one place the exchange rate lives. It is an ASSUMPTION, not a market rate: it is the rate that
+# Hetzner's own block-storage page implies (EUR 0.044 shown next to USD 0.0484). Change it here to rerun.
+fx_usd_per_eur = 1.10
+fx_note = "Assumption: the rate implied by Hetzner's own block-storage page (EUR 0.044 next to USD 0.0484). Not a market rate."
+# Units: GB and GiB are treated as the same unit, as the vendors' pages do not separate them.
+
+# ---------------------------------------------------------------------------------------------------------
+# Hetzner Cloud, EUR, excluding VAT.
+# ---------------------------------------------------------------------------------------------------------
+[hetzner]
+currency = "EUR"
+billing = "started_hour"            # every started hour is billed in full, until the server is deleted
+monthly_cap = true                  # the bill for one server never exceeds its monthly price
+hours_per_month = 730               # used only to apply the monthly cap to long runs
+includes_ipv4 = true                # prices on hetzner.com include a primary IPv4 address
+ipv4_eur_per_month = 0.50           # an IPv6-only server costs this much less per month
+ipv4_source = "https://docs.hetzner.com/cloud/servers/overview/"
+billing_source = "https://docs.hetzner.com/cloud/billing/faq/"
+billing_quote = "Hourly usage is rounded up to the full hour"
+read_date = "2026-11-14"
+# The pages show one "from" hourly price per type. The research note assumed it is the HEL1 price and did
+# not confirm that. Cross-check (see tests/bench): hourly x 624 is within rounding of the HEL1 monthly price
+# for all 13 types. Hourly prices for NBG1 are not published on the pages; cost.py estimates them by scaling
+# with the NBG1/HEL1 monthly ratio, and marks them "est.".
+hourly_price_location = "hel1"
+hourly_price_location_verified = false
+nbg1_hourly_is_estimate = true
+price_change_note = "Hetzner raised prices on 15 June 2026 (CPX and CCX by about +144% to +176%). The date comes from a search-engine summary of Hetzner's price-adjustment page, which could not be fetched. Treat as unverified. Any comparison made before that date is stale."
+price_change_verified = false
+product_pages = [
+  "https://www.hetzner.com/cloud/cost-optimized",
+  "https://www.hetzner.com/cloud/regular-performance",
+  "https://www.hetzner.com/cloud/general-purpose",
+]
+
+[hetzner.extras]
+# Not used by the calculator. Kept so the list matches the research note.
+volume_eur_per_gb_month = 0.044
+volume_source = "https://www.hetzner.com/cloud/block-storage/"
+volume_verified = true
+snapshot_eur_per_gb_month = 0.0143
+snapshot_verified = false
+snapshot_note = "The page label is ambiguous. Read as per GB per month."
+included_traffic_eu_tb = 20
+traffic_overage_eur_per_tb = 1.00
+
+# CX: shared, cost-optimized. All eight CX/CAX types carried the class "not-available" on 2026-11-14,
+# so they cannot be ordered and are never chosen as the nearest type. They are kept for reference only.
+[[hetzner.type]]
+name = "cx23"
+line = "CX"
+vcpu = 2
+ram_gib = 4
+eur_hour = 0.0096
+eur_month_hel1 = 5.99
+eur_month_nbg1 = 5.99
+available = false
+verified = true
+
+[[hetzner.type]]
+name = "cx33"
+line = "CX"
+vcpu = 4
+ram_gib = 8
+eur_hour = 0.0144
+eur_month_hel1 = 8.99
+eur_month_nbg1 = 8.99
+available = false
+verified = true
+
+[[hetzner.type]]
+name = "cx43"
+line = "CX"
+vcpu = 8
+ram_gib = 16
+eur_hour = 0.0264
+eur_month_hel1 = 16.49
+eur_month_nbg1 = 16.49
+available = false
+verified = true
+
+[[hetzner.type]]
+name = "cx53"
+line = "CX"
+vcpu = 16
+ram_gib = 32
+eur_hour = 0.0481
+eur_month_hel1 = 29.99
+eur_month_nbg1 = 29.99
+available = false
+verified = true
+
+# CPX: shared AMD, regular performance. The current EU line is CPX22 to CPX62.
+[[hetzner.type]]
+name = "cpx22"
+line = "CPX"
+vcpu = 2
+ram_gib = 4
+eur_hour = 0.0272
+eur_month_hel1 = 16.99
+eur_month_nbg1 = 19.99
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "cpx32"
+line = "CPX"
+vcpu = 4
+ram_gib = 8
+eur_hour = 0.0489
+eur_month_hel1 = 30.49
+eur_month_nbg1 = 35.99
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "cpx42"
+line = "CPX"
+vcpu = 8
+ram_gib = 16
+eur_hour = 0.0953
+eur_month_hel1 = 59.49
+eur_month_nbg1 = 69.99
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "cpx52"
+line = "CPX"
+vcpu = 12
+ram_gib = 24
+eur_hour = 0.1370
+eur_month_hel1 = 85.49
+eur_month_nbg1 = 100.99
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "cpx62"
+line = "CPX"
+vcpu = 16
+ram_gib = 32
+eur_hour = 0.1779
+eur_month_hel1 = 110.99
+eur_month_nbg1 = 130.49
+available = true
+verified = true
+
+# CCX: dedicated AMD vCPU, general purpose.
+[[hetzner.type]]
+name = "ccx13"
+line = "CCX"
+vcpu = 2
+ram_gib = 8
+eur_hour = 0.0593
+eur_month_hel1 = 36.99
+eur_month_nbg1 = 43.49
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "ccx23"
+line = "CCX"
+vcpu = 4
+ram_gib = 16
+eur_hour = 0.1178
+eur_month_hel1 = 73.49
+eur_month_nbg1 = 86.49
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "ccx33"
+line = "CCX"
+vcpu = 8
+ram_gib = 32
+eur_hour = 0.1891
+eur_month_hel1 = 117.99
+eur_month_nbg1 = 138.99
+available = true
+verified = true
+
+[[hetzner.type]]
+name = "ccx43"
+line = "CCX"
+vcpu = 16
+ram_gib = 64
+eur_hour = 0.3766
+eur_month_hel1 = 234.99
+eur_month_nbg1 = 276.49
+available = true
+verified = true
+
+# ---------------------------------------------------------------------------------------------------------
+# Managed sandboxes and hosted runners, USD.
+#
+# model = "resource":   cost = vCPU x cpu rate + GiB x ram rate (+ disk), for the time billed.
+#                       cpu_billing = "active" means the CPU rate applies to --cpu-util x the time.
+#                       With [[vendor.size]] entries, a request is rounded up to the smallest size that
+#                       fits and billed on that size's resources.
+# model = "mcu":        cost = max(vCPU / vcpu_per_mcu, GiB / gib_per_mcu) x MCU rate x time.
+# model = "fixed_rate": [[vendor.size]] entries carry a price per hour or per minute for the whole machine.
+# granularity:          "second" = exact, "minute" = each machine rounded up to a whole minute.
+# [[vendor.plan]]:      cost.py picks the first plan whose limits fit the request. Fees are monthly and are
+#                       shown beside the run cost, never hidden inside it.
+# ---------------------------------------------------------------------------------------------------------
+
+[[vendor]]
+id = "e2b"
+vendor = "E2B"
+product = "E2B sandbox"
+model = "resource"
+granularity = "second"
+cpu_billing = "provisioned"
+cpu_rate = 0.000014
+cpu_rate_unit = "vcpu-second"
+ram_rate = 0.0000045
+ram_rate_unit = "gib-second"
+source = "https://e2b.dev/pricing"
+source_extra = "https://docs.e2b.dev/faq/calculate-sandbox-price.md"
+quote = "$0.000014 per vCPU-second; $0.0000045 per GiB-second; $150 monthly plan fee, plus usage."
+read_date = "2026-11-14"
+verified = true
+unverified_items = []
+notes = "Disk is free (10 GiB Hobby, 20 GiB Pro). $100 one-time free credit. Pro is needed for sessions over 1 hour."
+free_credit_usd = 100
+
+[[vendor.plan]]
+name = "Hobby"
+fee_usd_month = 0
+max_vcpu = 8
+max_ram_gib = 8
+max_session_minutes = 60
+
+[[vendor.plan]]
+name = "Pro"
+fee_usd_month = 150
+max_vcpu = 8
+max_ram_gib = 8
+max_session_minutes = 1440
+
+[[vendor]]
+id = "daytona"
+vendor = "Daytona"
+product = "Daytona sandbox"
+model = "resource"
+granularity = "second"
+cpu_billing = "provisioned"
+cpu_rate = 0.0504
+cpu_rate_unit = "vcpu-hour"
+ram_rate = 0.0162
+ram_rate_unit = "gib-hour"
+source = "https://www.daytona.io/pricing"
+source_extra = "https://www.daytona.io/docs/en/limits/"
+quote = "$0.0504/h per vCPU; $0.0162/h per GiB; \"All billing is calculated per second.\""
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "The maximum sandbox size is not published. Only organization tier pools are listed (Tier 1: 10 vCPU / 10 GiB; the limits page says 20 GiB in another table). The calculator assumes no size limit.",
+  "A storage price of $0.000108 per GiB-hour (after the first 5 free) is listed; the page is unclear whether it applies to storage or memory. It is not used.",
+]
+notes = "No platform fee stated on the pricing page. $200 free credit."
+free_credit_usd = 200
+
+[[vendor.plan]]
+name = "Pay as you go"
+fee_usd_month = 0
+
+[[vendor]]
+id = "modal"
+vendor = "Modal"
+product = "Modal Sandboxes"
+model = "resource"
+granularity = "second"
+cpu_billing = "provisioned"
+cpu_rate = 0.00003942
+cpu_rate_unit = "core-second"
+vcpus_per_core = 2
+ram_rate = 0.00000667
+ram_rate_unit = "gib-second"
+source = "https://modal.com/pricing"
+quote = "$0.00003942 / core / sec; $0.00000667 / GiB / sec; billed at non-preemptible rates of 3x list price."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "The maximum sandbox size is not confirmed. The calculator assumes no size limit.",
+]
+notes = "One core is two vCPU. The quoted rate already includes the 3x non-preemptible multiplier. Billing is the greater of request or use (default floor 0.125 core / 128 MiB); the calculator assumes use equals the requested size."
+
+[[vendor.plan]]
+name = "Starter"
+fee_usd_month = 0
+included_credit_usd = 30
+included_credit_note = "$30 per month free credit"
+
+[[vendor]]
+id = "blaxel"
+vendor = "Blaxel"
+product = "Blaxel sandbox"
+model = "resource"
+granularity = "second"
+cpu_billing = "provisioned"
+cpu_rate = 0
+cpu_rate_unit = "vcpu-second"
+ram_rate = 0.0000115
+ram_rate_unit = "gib-second"
+source = "https://blaxel.ai/pricing"
+quote = "$0.0000115 / GB RAM / second; CPU scales automatically (not charged separately)."
+read_date = "2026-11-14"
+verified = true
+unverified_items = []
+notes = "Scales to zero after about 5 s idle and is not billed while suspended (not modelled). Up to $200 free credit. Up to 256 GB RAM per sandbox on the Custom plan."
+free_credit_usd = 200
+
+[[vendor.plan]]
+name = "Pay as you go"
+fee_usd_month = 0
+max_ram_gib = 256
+
+[[vendor]]
+id = "runloop"
+vendor = "Runloop"
+product = "Runloop devbox"
+model = "resource"
+granularity = "second"
+cpu_billing = "provisioned"
+cpu_rate = 0.108
+cpu_rate_unit = "vcpu-hour"
+ram_rate = 0.0252
+ram_rate_unit = "gib-hour"
+source = "https://runloop.ai/pricing"
+quote = "$0.108 / CPU-hr; $0.0252 / GB-hr."
+read_date = "2026-11-14"
+verified = true
+unverified_items = []
+notes = "Maximum size not stated on the page. $50 free credit; trial limit of 3 running devboxes."
+free_credit_usd = 50
+
+[[vendor.plan]]
+name = "Basic"
+fee_usd_month = 0
+
+[[vendor]]
+id = "morph"
+vendor = "Morph"
+product = "Morph Cloud"
+model = "mcu"
+granularity = "second"
+mcu_usd = 0.05
+vcpu_per_mcu = 1
+gib_per_mcu = 4
+source = "https://cloud.morph.so/web/subscribe"
+source_extra = "https://cloud.morph.so/docs/documentation/setup/plans"
+quote = "standard MCU rate of $0.05; one MCU is 1 vCPU-hour, or 4 GB RAM-hours, or 16 GB disk-hours."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "How an instance maps to MCU per hour is unverified. The calculator uses max(vCPU, RAM/4) from a competitor's comparison page (https://www.agent37.com/compare/morph). Disk is ignored.",
+  "The Developer plan's starting credit conflicts between two Morph pages (0 versus 300 MCU). No public per-hour price per size.",
+]
+notes = "Billing granularity not stated; the calculator assumes per second."
+
+[[vendor.plan]]
+name = "Developer"
+fee_usd_month = 0
+max_vcpu = 64
+max_ram_gib = 256
+
+[[vendor]]
+id = "fly-machines"
+vendor = "Fly.io"
+product = "Fly.io Machines (performance, Ashburn)"
+model = "fixed_rate"
+granularity = "second"
+sizes_complete = false
+source = "https://fly.io/pricing.md"
+source_extra = "https://docs.fly.io/about/pricing"
+quote = "Billed by the second while a Machine runs."
+read_date = "2026-11-14"
+verified = true
+unverified_items = []
+notes = "Ashburn prices; other regions carry a multiplier. Only the three performance sizes in the research note are listed. A stopped machine's rootfs costs $0.15/GB-month. The page's own 30-day figure for performance-16x is $528.02; cost.py multiplies the hourly rate by 730 hours instead, so it differs by about 1.4%."
+
+[[vendor.plan]]
+name = "Pay as you go"
+fee_usd_month = 0
+
+[[vendor.size]]
+name = "performance-4x"
+vcpu = 4
+ram_gib = 8
+rate = 0.1833
+rate_unit = "hour"
+
+[[vendor.size]]
+name = "performance-8x"
+vcpu = 8
+ram_gib = 16
+rate = 0.3667
+rate_unit = "hour"
+
+[[vendor.size]]
+name = "performance-16x"
+vcpu = 16
+ram_gib = 32
+rate = 0.7334
+rate_unit = "hour"
+
+[[vendor]]
+id = "fly-sprites"
+vendor = "Fly.io"
+product = "Fly.io Sprites"
+model = "resource"
+granularity = "second"
+cpu_billing = "active"
+cpu_rate = 0.0385
+cpu_rate_unit = "vcpu-hour"
+ram_rate = 0.021875
+ram_rate_unit = "gib-hour"
+source = "https://fly.io/sprites"
+quote = "$0.0385 / CPU-hour (cumulative CPU use); $0.021875 / GB-hour (actual use)."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "The maximum CPU and RAM per Sprite is not stated. The calculator assumes no size limit.",
+  "Memory is billed on actual use; the calculator assumes use equals the requested RAM.",
+  "Billing granularity not stated; the calculator assumes per second.",
+]
+notes = "Plans: Hero $100/month (1,200 CPU-hours, 4,800 RAM GB-hours, 150 GB included, not deducted here); Mythic $2,000/month; $1 trial credit for 7 days. Warm or cold Sprites are not billed for compute."
+
+[[vendor.plan]]
+name = "Hero"
+fee_usd_month = 100
+
+[[vendor]]
+id = "cloudflare"
+vendor = "Cloudflare"
+product = "Cloudflare Containers / Sandbox"
+model = "resource"
+granularity = "second"
+cpu_billing = "active"
+cpu_rate = 0.000020
+cpu_rate_unit = "vcpu-second"
+ram_rate = 0.0000025
+ram_rate_unit = "gib-second"
+disk_rate = 0.00000007
+disk_rate_unit = "gb-second"
+sizes_complete = false
+source = "https://developers.cloudflare.com/containers/pricing/"
+source_extra = "https://developers.cloudflare.com/sandbox/platform/pricing/"
+quote = "+ $0.000020 per additional vCPU-second (active use); +$0.0000025 per additional GiB-second; +$0.00000007 per additional GB-second; billed for every 10ms that they are actively running."
+read_date = "2026-11-14"
+verified = true
+unverified_items = []
+notes = "Memory and disk are billed on the provisioned size, CPU on active use. Workers Paid is $5/month and includes 25 GiB-hours, 375 vCPU-minutes and 200 GB-hours (not deducted here). Only the largest type, standard-4, is in the research note."
+
+[[vendor.plan]]
+name = "Workers Paid"
+fee_usd_month = 5
+max_vcpu = 4
+max_ram_gib = 12
+
+[[vendor.size]]
+name = "standard-4"
+vcpu = 4
+ram_gib = 12
+disk_gb = 20
+
+[[vendor]]
+id = "vercel"
+vendor = "Vercel"
+product = "Vercel Sandbox (Pro, iad1)"
+model = "resource"
+granularity = "minute"
+cpu_billing = "active"
+cpu_rate = 0.128
+cpu_rate_unit = "vcpu-hour"
+ram_rate = 0.0212
+ram_rate_unit = "gib-hour"
+creation_usd = 0.0000006
+source = "https://vercel.com/docs/sandbox/pricing"
+quote = "Active CPU $0.128/hour (Pro, iad1); provisioned memory $0.0212/GB-hour; creations $0.60/1M."
+read_date = "2026-11-14"
+page_date = "2026-09-10"
+verified = true
+unverified_items = []
+notes = "Active CPU excludes I/O wait. Memory is billed on the provisioned size for the whole run, in 1-minute minimum increments. Other regions differ. Pro includes a $20 usage credit. Enterprise allows 32 vCPU / 64 GB; its rates are not in the research note. Hobby (4 vCPU / 8 GB, 45 minutes) has a small free allowance and is not modelled."
+
+[[vendor.plan]]
+name = "Pro"
+fee_usd_month = 20
+included_credit_usd = 20
+max_vcpu = 8
+max_ram_gib = 16
+max_session_minutes = 1440
+
+[[vendor]]
+id = "codespaces"
+vendor = "GitHub"
+product = "GitHub Codespaces"
+model = "fixed_rate"
+granularity = "second"
+source = "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces"
+quote = "2 core $0.18/h; 4 core $0.36/h; 8 core $0.72/h; 16 core $1.44/h; 32 core $2.88/h."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "RAM per size is not in the fetched text (GitHub's docs state 4 GB per core; not re-verified). The calculator matches on vCPU only.",
+  "Billing granularity is not stated; the calculator assumes per second.",
+]
+notes = "Storage $0.07 per GB-month."
+
+[[vendor.plan]]
+name = "Pay as you go"
+fee_usd_month = 0
+
+[[vendor.size]]
+name = "2-core"
+vcpu = 2
+rate = 0.18
+rate_unit = "hour"
+
+[[vendor.size]]
+name = "4-core"
+vcpu = 4
+rate = 0.36
+rate_unit = "hour"
+
+[[vendor.size]]
+name = "8-core"
+vcpu = 8
+rate = 0.72
+rate_unit = "hour"
+
+[[vendor.size]]
+name = "16-core"
+vcpu = 16
+rate = 1.44
+rate_unit = "hour"
+
+[[vendor.size]]
+name = "32-core"
+vcpu = 32
+rate = 2.88
+rate_unit = "hour"
+
+[[vendor]]
+id = "github-actions"
+vendor = "GitHub"
+product = "GitHub Actions larger runners (Linux)"
+model = "fixed_rate"
+granularity = "minute"
+source = "https://docs.github.com/en/billing/reference/actions-runner-pricing"
+source_extra = "https://github.com/resources/insights/2026-pricing-changes-for-github-actions"
+quote = "Linux 4-core $0.012/min; 8-core $0.022/min; 16-core $0.042/min; 32-core $0.082/min."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "Minute rounding was not confirmed from the fetched text; the calculator rounds up to a whole minute.",
+  "RAM per runner size is not in the research note. The calculator matches on vCPU only.",
+]
+notes = "Hosted-runner prices were cut by up to 39% on 1 January 2026, with a $0.002 per-minute cloud platform charge included in the new rates."
+
+[[vendor.plan]]
+name = "Pay as you go"
+fee_usd_month = 0
+
+[[vendor.size]]
+name = "linux-4-core"
+vcpu = 4
+rate = 0.012
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "linux-8-core"
+vcpu = 8
+rate = 0.022
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "linux-16-core"
+vcpu = 16
+rate = 0.042
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "linux-32-core"
+vcpu = 32
+rate = 0.082
+rate_unit = "minute"
+
+[[vendor]]
+id = "namespace"
+vendor = "Namespace"
+product = "Namespace runners (prepaid rate)"
+model = "fixed_rate"
+granularity = "minute"
+sizes_complete = false
+source = "https://namespace.so/pricing"
+quote = "4 vCPU / 8 GB $0.004 prepaid, $0.006 overage per minute; 8 / 16 $0.008, $0.012; 16 / 32 $0.016, $0.024."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "The research note does not say which plan gets the prepaid rate and which gets the overage rate. The main cost uses the prepaid rate; the overage cost is shown beside it.",
+]
+notes = "Plans: Developer $0 (pay as you go), Team $100/month (100,000 unit-minutes), Business $250/month. Billing granularity assumed per minute from the quoted unit."
+
+[[vendor.plan]]
+name = "Team"
+fee_usd_month = 100
+
+[[vendor.size]]
+name = "4 vCPU / 8 GB"
+vcpu = 4
+ram_gib = 8
+rate = 0.004
+rate_alt = 0.006
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "8 vCPU / 16 GB"
+vcpu = 8
+ram_gib = 16
+rate = 0.008
+rate_alt = 0.012
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "16 vCPU / 32 GB"
+vcpu = 16
+ram_gib = 32
+rate = 0.016
+rate_alt = 0.024
+rate_unit = "minute"
+
+[[vendor]]
+id = "depot"
+vendor = "Depot"
+product = "Depot GitHub Actions runners"
+model = "fixed_rate"
+granularity = "minute"
+sizes_complete = false
+source = "https://depot.dev/docs/github-actions/runner-types"
+quote = "4 vCPU / 16 GB $0.012/min; 8 vCPU / 32 GB $0.024/min; 16 vCPU / 64 GB $0.048/min."
+read_date = "2026-11-14"
+verified = true
+unverified_items = []
+notes = "The pricing page lists only $0.006/min for the base 2-vCPU runner. Plans: Developer $20/month (2,000 minutes), Startup $200/month (20,000 minutes). Billing granularity assumed per minute from the quoted unit."
+
+[[vendor.plan]]
+name = "Developer"
+fee_usd_month = 20
+
+[[vendor.size]]
+name = "4 vCPU / 16 GB"
+vcpu = 4
+ram_gib = 16
+rate = 0.012
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "8 vCPU / 32 GB"
+vcpu = 8
+ram_gib = 32
+rate = 0.024
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "16 vCPU / 64 GB"
+vcpu = 16
+ram_gib = 64
+rate = 0.048
+rate_unit = "minute"
+
+[[vendor]]
+id = "blacksmith"
+vendor = "Blacksmith"
+product = "Blacksmith runners (Ubuntu x64)"
+model = "fixed_rate"
+granularity = "minute"
+sizes_complete = false
+source = "https://www.blacksmith.sh/pricing"
+quote = "$0.004 per minute for Ubuntu x64; 3,000 free minutes per month."
+read_date = "2026-11-14"
+verified = false
+unverified_items = [
+  "Only the $0.004/min price (2 vCPU) was published. The 4, 8 and 16 vCPU prices are a linear extrapolation from it, not read from the page.",
+]
+notes = "Billing granularity assumed per minute from the quoted unit."
+
+[[vendor.plan]]
+name = "Pay as you go"
+fee_usd_month = 0
+
+[[vendor.size]]
+name = "2 vCPU"
+vcpu = 2
+rate = 0.004
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "4 vCPU (extrapolated)"
+vcpu = 4
+rate = 0.008
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "8 vCPU (extrapolated)"
+vcpu = 8
+rate = 0.016
+rate_unit = "minute"
+
+[[vendor.size]]
+name = "16 vCPU (extrapolated)"
+vcpu = 16
+rate = 0.032
+rate_unit = "minute"
+
+# Products with no published VM price. Not used by the calculator.
+[[not_priced]]
+vendor = "Cursor"
+product = "Cursor cloud agents"
+source = "https://cursor.com/docs/cloud-agent"
+quote = "Cloud Agents use your plan's usage like other agent work, at the selected model's rate."
+
+[[not_priced]]
+vendor = "OpenAI"
+product = "Codex cloud"
+source = "https://learn.chatgpt.com/docs/pricing"
+quote = "Local messages and cloud chats share your plan's usage allowance."
+
+[[not_priced]]
+vendor = "Anthropic"
+product = "Claude Code on the web"
+source = "https://code.claude.com/docs/en/claude-code-on-the-web"
+quote = "It counts toward your plan's usage limits ... and there's no separate charge for the cloud VM."
