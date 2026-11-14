@@ -25,12 +25,14 @@ skip_deps=0
 
 usage() {
     cat <<'EOF'
-usage: run_workload.sh [--type NAME] [--workdir DIR] [--out FILE] [--skip-deps] [--dry-run]
+usage: run_workload.sh [--type NAME] [--workdir DIR] [--out FILE] [--skip-deps] [--jobs N] [--dry-run]
 
   --type NAME     label for the machine, for example cpx42. It is recorded as server_type in the result.
   --workdir DIR   where the clone, logs and build go (default ./bench-work). It is deleted first.
   --out FILE      where to write the result JSON (default result.json).
   --skip-deps     do not run apt-get; the build tools and -dev libraries must already be installed.
+  --jobs N        use N parallel jobs and record N as the CPU count. For a container whose nproc reports the
+                  host's cores, not the vCPUs it was given.
   --dry-run       do not fetch or build anything. Run a one-second stand-in command and record the result.
 EOF
 }
@@ -41,6 +43,7 @@ while [ $# -gt 0 ]; do
         --workdir) workdir="${2:-}"; shift 2 ;;
         --out) out="${2:-}"; shift 2 ;;
         --skip-deps) skip_deps=1; shift ;;
+        --jobs) jobs="${2:-}"; shift 2 ;;
         --dry-run) dry_run=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "run_workload.sh: unknown argument: $1" >&2; usage >&2; exit 64 ;;
@@ -113,6 +116,11 @@ as_root() {
 # ---- state -----------------------------------------------------------------------------------------------
 
 cpus=$(cpu_count)
+case "${jobs:-}" in
+    '') ;;
+    *[!0-9]*|0) echo "run_workload.sh: --jobs needs a whole number above 0" >&2; exit 64 ;;
+    *) cpus=$jobs ;;
+esac
 mem=$(mem_kib)
 mem=${mem:-0}
 model=$(cpu_model)

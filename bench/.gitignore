@@ -1,3 +1,3 @@
 bench-work/
-result.json
+result*.json
 *.log
