@@ -1,7 +1,8 @@
 """``motel omnigent``: make motel an Omnigent sandbox provider with one command (EXPERIMENTAL).
 
-    motel omnigent setup [--config PATH] [--server-url URL] [--server-type TYPE] [--ttl TTL] [--dry-run] [--yes] [--json]
+    motel omnigent setup [--config PATH] [--server-url URL] [--server-type TYPE] [--ttl TTL] [--image NAME] [--dry-run] [--yes] [--json]
     motel omnigent status [--config PATH] [--json]
+    motel omnigent bake-script [--omnigent-version X] [--harness-package SPEC]... [--no-harness]
     motel omnigent mcp-config
 
 ``main(argv)`` takes the arguments AFTER the word ``omnigent``. Omnigent is the orchestrator (sessions, UI); motel only
@@ -18,13 +19,14 @@ import sys
 import tempfile
 
 from motel.errors import MotelError, Refused, SystemFault, Usage
-from motel.omnigent_setup import config_edit
+from motel.omnigent_setup import bake_script, config_edit
 from motel.omnigent_setup.probe import (
     INSTALL_OMNIGENT_HINT,
     Check,
     Deps,
     OmnigentEnv,
     check_cabins,
+    check_image,
     check_provider,
     find_omnigent,
     install_command,
@@ -46,13 +48,18 @@ deletes servers (cabins) for it. Cabins must already work on this machine (see "
 
 `setup` checks that cabins work, finds Omnigent, installs motel into Omnigent's environment if it is missing there,
 and writes the `sandbox:` block into the Omnigent server config. It does not restart the server and does not create a
-cabin. The first session on a bare cabin still takes minutes: the cabin installs Omnigent and the agent CLIs."""
+cabin. The first session on a bare cabin still takes minutes: the cabin installs Omnigent and the agent CLIs. To avoid
+that, the operator bakes an image once (`bake-script`) and `setup --image NAME` points the provider at it."""
 
 HELP_EXAMPLES = """\
 examples:
   motel omnigent setup --dry-run     say what setup would do, change nothing
   motel omnigent setup               do it, then print the restart line
   motel omnigent status              check cabins, Omnigent, the provider and the config block
+  motel omnigent bake-script > setup.sh && sudo motel-desk tour bake omnigent --script setup.sh
+                                     bake an image that holds Omnigent and the agent CLIs (operator, once)
+  motel omnigent setup --image omnigent
+                                     start cabins from that image (writes image and bootstrap: none)
   motel omnigent mcp-config          print the MCP snippet that lets an agent start tours"""
 
 
@@ -76,6 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
                         "port of the running server)")
     target.add_argument("--server-type", metavar="TYPE", help="cabin server type for the motel: block (default: not written)")
     target.add_argument("--ttl", metavar="TTL", help="cabin lease length for the motel: block, e.g. 2h (default: not written)")
+    target.add_argument("--image", metavar="NAME", help="start cabins from this baked image (see `motel cabin images`): writes "
+                        "image: NAME and bootstrap: none into the motel: block (default: not written)")
     parser = OmnigentParser(prog="motel omnigent", allow_abbrev=False, formatter_class=argparse.RawDescriptionHelpFormatter,
                             description=HELP_DESCRIPTION, epilog=HELP_EXAMPLES)
     sub = parser.add_subparsers(dest="verb", required=True, parser_class=OmnigentParser, metavar="VERB")
@@ -84,6 +93,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true", help="replace a sandbox block that names another provider")
     sub.add_parser("status", parents=[common, target], allow_abbrev=False,
                    help="check cabins, Omnigent, the provider and the config block (read-only)")
+    p = sub.add_parser("bake-script", allow_abbrev=False, help="print the setup script for a baked Omnigent image")
+    p.add_argument("--omnigent-version", metavar="X", help="the Omnigent release to install on the image (default: $OMNIGENT_VERSION, "
+                   "else the version installed here)")
+    p.add_argument("--harness-package", metavar="SPEC", action="append", dest="harness_packages",
+                   help="an npm package for an agent CLI, repeatable (default: @anthropic-ai/claude-code and @openai/codex); "
+                        "use the same list as harness_packages in the motel: block")
+    p.add_argument("--no-harness", action="store_true", help="install no Node and no agent CLIs")
     sub.add_parser("mcp-config", allow_abbrev=False, help="print the MCP server snippet that lets an agent start tours")
     return parser
 
@@ -118,7 +134,8 @@ class Omnigent:
         if not url:
             port = next((s["port"] for s in servers if s.get("port")), DEFAULT_PORT)
             url = f"http://127.0.0.1:{port}"
-        want = config_edit.Want(url, bool(args.server_url), args.server_type, args.ttl, bool(getattr(args, "yes", False)))
+        want = config_edit.Want(url, bool(args.server_url), args.server_type, args.ttl, bool(getattr(args, "yes", False)),
+                                args.image)
         try:
             config_edit.check_want(want)
         except ValueError as exc:
@@ -334,6 +351,30 @@ class Omnigent:
         for line in lines:
             self.say(line)
 
+    # -- bake-script
+    def bake_script(self, args) -> int:
+        """Print the setup script for ``sudo motel-desk tour bake NAME --script FILE``. Changes nothing."""
+        version = args.omnigent_version
+        if version is None:
+            version = self.deps.environ.get("OMNIGENT_VERSION") or None
+        if version is None:
+            env = find_omnigent(self.deps)
+            version = env.version if env else None
+        if version is None:
+            raise Usage("no Omnigent version to install: none was given and no omnigent is installed here",
+                        "motel omnigent bake-script --omnigent-version 0.21.0")
+        if args.no_harness and args.harness_packages:
+            raise Usage("--no-harness and --harness-package cannot be used together", "motel omnigent bake-script --help")
+        packages = () if args.no_harness else tuple(args.harness_packages or bake_script.DEFAULT_HARNESS_PACKAGES)
+        try:
+            text = bake_script.render(version, packages)
+        except ValueError as exc:
+            raise Usage(str(exc), "motel omnigent bake-script --omnigent-version 0.21.0") from None
+        self.out.write(text)
+        print("motel: save this as setup.sh, then run: sudo motel-desk tour bake omnigent --script setup.sh   "
+              "(then: motel omnigent setup --image omnigent)", file=self.err)
+        return 0
+
     # -- status
     def status(self, args) -> int:
         self.json = args.json
@@ -355,6 +396,7 @@ class Omnigent:
             provider = check_provider(self.deps, env)
             row("provider visible", provider.ok, provider.detail + ("" if provider.ok else " (next: motel omnigent setup)"))
         config = {"path": path, "source": source, "exists": False, "present": False, "matches": False, "action": None}
+        text = None
         try:
             text = self.read_config(path)
             plan = config_edit.plan_config(text, want)
@@ -374,6 +416,15 @@ class Omnigent:
         except MotelError as exc:
             row("config block", False, exc.message)
             row("block matches setup", False, "not checked")
+        options = config_edit.read_motel_options(text)
+        image = {"name": options.get("image"), "bootstrap": options.get("bootstrap"), "exists": None}
+        if image["name"]:
+            check = check_image(self.deps, image["name"])
+            image["exists"] = check.ok
+            row("baked image", check.ok, check.detail + ("" if check.ok else f" (next: {check.hint})"))
+            if image["bootstrap"] != "none":
+                row("bootstrap", True, "the config sets an image but not bootstrap: none, so each cabin still checks for "
+                    "omnigent and installs it only if the image lacks it", "info")
         using = [s for s in servers if s.get("config") and os.path.realpath(s["config"]) == os.path.realpath(path)]
         if not servers:
             row("server", True, "no running omnigent server was found", "info")
@@ -383,7 +434,7 @@ class Omnigent:
             row("server", False, f"a server is running (pid {servers[0]['pid']}) that was not started with {path}; it ignores "
                                  "the block until it is restarted with that file (omnigent server -c FILE)", "warn")
         ready = all(r["ok"] for r in rows if r["level"] != "warn" and r["check"] != "server")
-        doc = {"schema": SCHEMA, "ok": ready, "checks": rows, "config": config,
+        doc = {"schema": SCHEMA, "ok": ready, "checks": rows, "config": config, "image": image,
                "omnigent": {"found": env is not None, "version": env.version if env else None,
                             "executable": env.executable if env else None, "python": env.python if env else None,
                             "kind": env.kind if env else None}}
@@ -453,6 +504,8 @@ def main(argv=None, *, deps: Deps | None = None, out=None, err=None) -> int:
             return tool.setup(args)
         if args.verb == "status":
             return tool.status(args)
+        if args.verb == "bake-script":
+            return tool.bake_script(args)
         print(json.dumps(mcp_snippet(), indent=2), file=out)
         print(MCP_NOTE, file=err)
         return 0

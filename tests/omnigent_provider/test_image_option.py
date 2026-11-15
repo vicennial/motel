@@ -97,3 +97,33 @@ def test_the_pip_bootstrap_adds_no_probe_at_provision(rig, tmp_path):
     seed(rig)
     make(rig, tmp_path, image="omnigent").provision("managed-a1b2c3d4")
     assert rig.scripts() == [tp.wrap("true\n")]
+
+
+# -- the bake script installs what the pip bootstrap installs -------------------------------------------------------
+def test_the_bake_script_matches_the_pip_bootstrap():
+    import re
+
+    from omnigent.community.sandbox.motel.config import DEFAULT_HARNESS_PACKAGES, NPM_SPEC_RE, VERSION_RE, release_version
+
+    from motel.omnigent_setup import bake_script
+
+    base = tp.base_setup()
+    apt = re.search(r"apt-get install -y -q (.+)\n", base).group(1).split()
+    assert tuple(apt) == bake_script.PACKAGES
+    harness = tp.harness_install(["x"], True)
+    assert "apt-get install -y -q nodejs npm" in harness and tuple(bake_script.NODE_PACKAGES) == ("nodejs", "npm")
+    assert tuple(DEFAULT_HARNESS_PACKAGES) == bake_script.DEFAULT_HARNESS_PACKAGES
+    assert "sudo -n apt-get install" in base and "python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'" in base
+    assert "pip install --quiet --disable-pip-version-check" in tp.ensure_omnigent_script("0.21.0", [])
+    for text in ("0.21.0", "1.0", "0.21.0rc1", "0.21.0.dev3", "latest", "0.21.0; id", "", "1.0.0.post2", "$(id)"):
+        assert bake_script.release_version(text) == release_version(text), text
+    for spec in ("@openai/codex", "@openai/codex@1.2.3", "x; id", "UPPER", "a b", "$(id)", "@a/b@latest"):
+        assert bool(bake_script.NPM_SPEC_RE.fullmatch(spec)) == bool(NPM_SPEC_RE.fullmatch(spec)), spec
+    assert VERSION_RE.pattern == bake_script.VERSION_RE.pattern
+
+
+def test_the_script_puts_omnigent_where_the_provider_looks_for_it():
+    from motel.omnigent_setup import bake_script
+
+    assert 'command -v omnigent' in tp.ensure_omnigent_script("0.21.0", [])
+    assert bake_script.LINK.startswith("/usr/local/bin/")           # a default PATH entry of every guest user

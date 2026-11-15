@@ -1,7 +1,7 @@
 """The text-level edit of an Omnigent server config: what it writes, what it leaves alone, when it refuses."""
 import unittest
 
-from motel.omnigent_setup.config_edit import Want, plan_config, render_block, scalar
+from motel.omnigent_setup.config_edit import Want, plan_config, read_motel_options, render_block, scalar
 
 URL = "http://127.0.0.1:6767"
 WANT = Want(URL)
@@ -55,6 +55,57 @@ class CreateAndAppendTest(unittest.TestCase):
                      Want(URL, ttl="2 hours"), Want(URL, ttl="0h"), Want(URL, server_type="a\nb")):
             with self.assertRaises(ValueError, msg=want):
                 plan_config("", want)
+
+
+class ImageFlagTest(unittest.TestCase):
+    IMG = Want(URL, image="omnigent")
+
+    def test_an_image_writes_itself_and_bootstrap_none(self):
+        self.assertEqual(render_block(self.IMG),
+                         "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n"
+                         "    image: omnigent\n    bootstrap: none\n")
+        both = render_block(Want(URL, server_type="cpx32", ttl="2h", image="omnigent"))
+        self.assertTrue(both.endswith("    server_type: cpx32\n    ttl: 2h\n    image: omnigent\n    bootstrap: none\n"))
+
+    def test_a_bad_image_is_refused(self):
+        for bad in ("Omni", "a b", "ubuntu-24.04", "123", "x" * 41, "-a", "a-"):
+            with self.assertRaises(ValueError, msg=bad):
+                plan_config(None, Want(URL, image=bad))
+
+    def test_the_edit_is_idempotent_in_every_shape(self):
+        shapes = (None, "", "other: 1\n", "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n",
+                  "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n    ttl: 1h\n    bootstrap: pip\n",
+                  "sandbox:\n  server_url: http://127.0.0.1:6767\n  providers:\n    - provider: modal\n    - provider: motel\n"
+                  "      motel:\n        image: old\n",
+                  "sandbox:\n  server_url: http://127.0.0.1:6767\n  providers:\n    - provider: motel\n")
+        for text in shapes:
+            plan = plan_config(text, self.IMG)
+            self.assertNotEqual(plan.action, "manual", (text, plan.reason))
+            again = plan_config(plan.text, self.IMG)
+            self.assertEqual(again.action, "unchanged", (text, plan.text))
+            options = read_motel_options(plan.text)
+            self.assertEqual((options.get("image"), options.get("bootstrap")), ("omnigent", "none"), plan.text)
+
+    def test_an_existing_image_and_bootstrap_are_replaced_with_their_comments_kept(self):
+        text = "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n    image: old   # was\n    bootstrap: pip # hand\n"
+        plan = plan_config(text, self.IMG)
+        self.assertEqual(plan.action, "update")
+        self.assertIn("    image: omnigent   # was\n", plan.text)
+        self.assertIn("    bootstrap: none # hand\n", plan.text)
+
+    def test_an_inline_motel_block_is_left_to_the_user(self):
+        text = "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel: {ttl: 1h}\n"
+        self.assertEqual(plan_config(text, self.IMG).action, "manual")
+
+    def test_reading_the_options_in_both_shapes_and_when_there_are_none(self):
+        single = "sandbox:\n  provider: motel\n  motel:\n    image: omnigent\n    ttl: 2h\n"
+        self.assertEqual(read_motel_options(single), {"image": "omnigent", "ttl": "2h"})
+        listed = ("sandbox:\n  providers:\n    - provider: modal\n      motel:\n        image: wrong\n"
+                  "    - provider: motel\n      motel:\n        image: right\n")
+        self.assertEqual(read_motel_options(listed), {"image": "right"})
+        other = "sandbox:\n  provider: modal\n  motel:\n    image: nope\n"
+        for text in (None, "", "a: 1\n", "sandbox:\n  provider: motel\n", other, "sandbox: {provider: motel}\n", "sandbox:\r\n  x: 1\r\n"):
+            self.assertEqual(read_motel_options(text), {}, text)
 
 
 class SingleProviderShapeTest(unittest.TestCase):
@@ -236,7 +287,8 @@ class RoundTripWithYamlTest(unittest.TestCase):
         "sandbox:\n    provider: motel\n    motel:\n        ttl: 1h\n",
         "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n    disk_gb: 20\n    env: [A, B]\n",
     )
-    WANTS = (WANT, Want(URL, server_type="cpx32"), Want(URL, True, "cpx32", "2h"), Want("https://omni.example.com", True))
+    WANTS = (WANT, Want(URL, server_type="cpx32"), Want(URL, True, "cpx32", "2h"), Want("https://omni.example.com", True),
+             Want(URL, image="omnigent"), Want(URL, ttl="1h", image="omnigent"))
 
     def test_every_edit_parses_and_keeps_the_other_keys(self):
         for text in self.CORPUS:
@@ -257,6 +309,8 @@ class RoundTripWithYamlTest(unittest.TestCase):
                     self.assertEqual(merged["motel"]["ttl"], want.ttl)
                 if want.server_type:
                     self.assertEqual(merged["motel"]["server_type"], want.server_type)
+                if want.image:
+                    self.assertEqual((merged["motel"]["image"], merged["motel"]["bootstrap"]), (want.image, "none"))
                 again = plan_config(plan.text, want)
                 self.assertEqual(again.action, "unchanged", (text, want, plan.text))
 

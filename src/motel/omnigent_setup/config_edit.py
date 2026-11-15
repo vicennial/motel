@@ -29,18 +29,21 @@ TOP_SANDBOX_RE = re.compile(r"""^(?P<q>["']?)sandbox(?P=q)[ ]*:(?P<rest>.*)$""")
 URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?&=%+@\[\]-]+$")
 TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 TTL_RE = re.compile(r"^[1-9][0-9]{0,3}[mhd]$")
+IMAGE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
 NOTE = "# Added by `motel omnigent setup` (see docs/omnigent.md). Restart the Omnigent server to load it.\n"
 
 
 @dataclass(frozen=True)
 class Want:
-    """What the user asked for. ``server_url_explicit`` is true when ``--server-url`` was given."""
+    """What the user asked for. ``server_url_explicit`` is true when ``--server-url`` was given. ``image`` is the name of a
+    baked image: it is written together with ``bootstrap: none``, because a baked image already holds omnigent."""
 
     server_url: str
     server_url_explicit: bool = False
     server_type: str | None = None
     ttl: str | None = None
     replace_other: bool = False
+    image: str | None = None
 
 
 @dataclass
@@ -86,14 +89,18 @@ def check_want(want: Want) -> None:
         raise ValueError(f"bad server type {want.server_type!r}: use a cabin type such as cpx32")
     if want.ttl is not None and not TTL_RE.fullmatch(want.ttl):
         raise ValueError(f"bad ttl {want.ttl!r}: use e.g. 90m, 2h or 1d")
+    if want.image is not None and (not IMAGE_RE.fullmatch(want.image) or want.image.isdigit()):
+        raise ValueError(f"bad image name {want.image!r}: use the name `motel cabin images` shows (lowercase letters, digits, hyphens)")
 
 
 def _flags(want: Want) -> list[tuple[str, str]]:
-    return [(k, v) for k, v in (("server_type", want.server_type), ("ttl", want.ttl)) if v is not None]
+    flags = [(k, v) for k, v in (("server_type", want.server_type), ("ttl", want.ttl), ("image", want.image)) if v is not None]
+    return flags + ([("bootstrap", "none")] if want.image is not None else [])
 
 
 def render_block(want: Want) -> str:
-    """The block ``setup`` writes: provider and server_url, plus a ``motel:`` sub-block only for flags that were given."""
+    """The block ``setup`` writes: provider and server_url, plus a ``motel:`` sub-block only for flags that were given
+    (``--image`` also writes ``bootstrap: none``)."""
     lines = ["sandbox:", f"  provider: {PROVIDER}", f"  server_url: {want.server_url}"]
     flags = _flags(want)
     if flags:
@@ -227,7 +234,10 @@ def _plan(text: str, want: Want, block: str) -> Plan:
         raise _Manual("the file has more than one top-level sandbox key")
     if not tops:
         return Plan("add", block, text=_append_text(text, block))
-    start = tops[0]
+    return _editor(lines, tops[0], want, block).run()
+
+
+def _editor(lines: list[str], start: int, want: Want, block: str) -> _Editor:
     head = TOP_SANDBOX_RE.match(lines[start])
     if head.group("q"):
         raise _Manual("the sandbox key is quoted")
@@ -240,7 +250,22 @@ def _plan(text: str, want: Want, block: str) -> Plan:
                 break
             last = i
     end = last + 1
-    return _Editor(lines, start, end, _parse_entries(lines, start + 1, end), want, block).run()
+    return _Editor(lines, start, end, _parse_entries(lines, start + 1, end), want, block)
+
+
+def read_motel_options(text: str | None) -> dict[str, str | None]:
+    """The plain keys of the ``motel:`` sub-block of the motel provider in a server config (``image``, ``bootstrap``, ...),
+    as the text says them. ``{}`` when there is no such block or the file is not one that setup edits."""
+    if not text or "\r" in text:
+        return {}
+    lines = text.split("\n")
+    tops = [i for i, ln in enumerate(lines) if TOP_SANDBOX_RE.match(ln)]
+    if len(tops) != 1:
+        return {}
+    try:
+        return _editor(lines, tops[0], Want("http://127.0.0.1:6767"), "").options()
+    except _Manual:
+        return {}
 
 
 class _Editor:
@@ -303,6 +328,34 @@ class _Editor:
         if "provider" in self.keys and "providers" in self.keys:
             raise _Manual("the sandbox block has both provider and providers")
         return self.plan_list() if "providers" in self.keys else self.plan_single()
+
+    def options(self) -> dict[str, str | None]:
+        """Read-only: the keys under the motel provider's ``motel:`` entry."""
+        entries = self.entries
+        if not entries:
+            return {}
+        base = min(e.indent for e in entries)
+        keys = {e.key: e for e in entries if e.indent == base and e.key}
+        scope, motel = entries, None
+        if "providers" in keys:
+            providers = keys["providers"]
+            inside = [e for e in entries if providers.idx < e.idx <= self.end_of(providers)]
+            dashes = [e for e in inside if e.dash]
+            items = [e for e in dashes if e.indent == min((d.indent for d in dashes), default=0)]
+            stops = [it.idx for it in items[1:]] + [self.end_of(providers) + 1]
+            for item, stop in zip(items, stops, strict=True):
+                if self.item_provider(item, stop) == PROVIDER:
+                    scope = [e for e in entries if item.idx <= e.idx < stop]
+                    motel = next((e for e in scope if e.key == "motel" and e.indent + (2 if e.dash else 0) == item.indent + 2), None)
+        elif "provider" in keys and scalar(keys["provider"].val) == PROVIDER:
+            motel = keys.get("motel")
+        if motel is None or motel.val:
+            return {}
+        nested = [e for e in scope if motel.idx < e.idx <= self.end_of(motel)]
+        if not nested:
+            return {}
+        sub = min(e.indent for e in nested)
+        return {e.key: scalar(e.val) for e in nested if e.indent == sub and e.key}
 
     def plan_single(self) -> Plan:
         keys, want, pad = self.keys, self.want, " " * self.base
