@@ -220,10 +220,11 @@ instead of an API key, with real risks. See [docs/tours.md](https://github.com/v
 
 ## Can Omnigent run sessions on motel cabins?
 
-Yes, as an optional provider: `uv tool install omnigent --with motel`, then `sandbox.provider: motel` in the Omnigent
-server config (`omnigent sandbox create --provider motel` works from an Omnigent source checkout). Each session's host runs on a cabin that has a TTL, a
-dead-man timer and your price cap, and is checked out when the session ends. Credentials pass by variable name, not
-copied. Experimental; run against a real Hetzner cabin with Omnigent 0.21.0:
+Yes, as an optional provider. With cabins working on your machine, `motel omnigent setup` installs the provider into
+Omnigent's environment and writes the `sandbox:` block into the Omnigent server config; you then restart the server.
+Each session's host runs on a cabin that has a TTL, a dead-man timer and your price cap, and is checked out when the
+session ends. Credentials pass by variable name, not copied. The first session on a bare cabin takes minutes.
+Experimental; run against a real Hetzner cabin with Omnigent 0.21.0:
 [docs/omnigent.md](https://github.com/vicennial/motel/blob/main/docs/omnigent.md).
 
 ## FAQ

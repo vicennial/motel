@@ -86,6 +86,9 @@ Unlike rooms, **a checked-out cabin is deleted for good: no grace, no lost & fou
 results back first. Cabins cost money by the hour: check out as soon as you are done, and apply the same
 exit-code rules (never retry exit 3 in a loop). Do not put credentials, personal data or private keys on one.
 
+`motel omnigent setup` edits the user's Omnigent server config and installs motel into Omnigent's environment. Run it
+only when the user asks, and start with `--dry-run`.
+
 ## Tours: a swarm of agent jobs (experimental)
 
 Use a tour to run several independent, bounded agent jobs in parallel, each on its own disposable cabin. It may be
