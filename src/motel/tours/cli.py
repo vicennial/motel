@@ -331,7 +331,8 @@ def render_tour(tour: dict) -> str:
     for g in tour["guests"]:
         res = g.get("result") or {}
         extra = f"  branch {res['branch']}" if res.get("bundle") else ""
-        rows.append(f"  {g['id']:<24} {g['status']:<10} cleanup {g['cleanup']:<16} attempts {g['attempts']}{extra}")
+        model = f"  model {g['model']}" if g.get("model") else ""
+        rows.append(f"  {g['id']:<24} {g['status']:<10} cleanup {g['cleanup']:<16} attempts {g['attempts']}{model}{extra}")
         for a in reversed(g.get("attempt_list") or []):        # a guest still booking (or that never ran): the last thing seen
             why = (a.get("boot") or {}).get("summary") if g["status"] in ("queued", "booking") else None
             why = why or a.get("error")
@@ -344,7 +345,8 @@ def render_tour(tour: dict) -> str:
 def render_result(record: dict) -> str:
     v = record["verified"]
     r = record.get("runner_reported") or {}
-    lines = [f"{record['tour']} / {record['guest']} · {record['status']} · cleanup {record['cleanup']} · auth {record.get('auth')}",
+    lines = [f"{record['tour']} / {record['guest']} · {record['status']} · cleanup {record['cleanup']} · auth {record.get('auth')}"
+             + (f" · model {record['model']}" if record.get("model") else ""),
              f"  verified by motel: {v['duration_s']}s · cost EUR {v['cost_eur']} · "
              f"{v['changed_files_total']} file(s) changed · bundle {'yes' if v['bundle'] else 'no'} · {len(v['artifacts'])} artifact(s)",
              f"  reported by the runner on the guest (not observed by motel): exit {r.get('exit_code')} · {r.get('termination')}"]
