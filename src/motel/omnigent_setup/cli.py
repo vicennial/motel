@@ -70,8 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
     common = OmnigentParser(add_help=False, allow_abbrev=False)
     common.add_argument("--json", action="store_true", help="machine-readable output")
     target = OmnigentParser(add_help=False, allow_abbrev=False)
-    target.add_argument("--config", metavar="PATH", help="the Omnigent server config file (default: the file of the running "
-                        "server, else ~/.omnigent/server.yaml)")
+    target.add_argument("--config", metavar="PATH", help="the Omnigent server config file (default: the file the running "
+                        "server was started with, else ~/.omnigent/config.yaml)")
     target.add_argument("--server-url", metavar="URL", help="the server's own URL (default: http://127.0.0.1:6767, or the "
                         "port of the running server)")
     target.add_argument("--server-type", metavar="TYPE", help="cabin server type for the motel: block (default: not written)")
@@ -126,13 +126,18 @@ class Omnigent:
         return want, servers
 
     def config_path(self, args, servers: list[dict]) -> tuple[str, str]:
+        """Which file to edit. Omnigent reads the ``sandbox:`` block only from the file its server is started with: ``-c FILE``
+        for ``omnigent server``, and ``~/.omnigent/config.yaml`` (when it exists) for the server that Omnigent starts itself."""
         if args.config:
             return os.path.abspath(os.path.expanduser(args.config)), "--config"
         for server in servers:
             if server.get("config"):
                 return server["config"], f"the running server (pid {server['pid']})"
+        return self.user_config(), "default"
+
+    def user_config(self) -> str:
         base = self.deps.environ.get("OMNIGENT_CONFIG_HOME") or os.path.join(self.deps.home, ".omnigent")
-        return os.path.join(base, "server.yaml"), "default"
+        return os.path.join(base, "config.yaml")
 
     @staticmethod
     def read_config(path: str) -> str | None:
@@ -304,18 +309,24 @@ class Omnigent:
         self.report_next(path, servers, result, changed=not dry, dry=dry)
 
     def report_next(self, path: str, servers: list[dict], result: dict, *, changed: bool, dry: bool = False) -> None:
-        running = list(servers)
-        using = [s for s in running if s.get("config") and os.path.realpath(s["config"]) == os.path.realpath(path)]
-        restart = (f"Restart the Omnigent server so that it loads {path}. Setup does not restart it." if changed or dry else
-                   f"Restart the Omnigent server only if it was started before {path} had this block. Setup does not restart it.")
-        start = f"omnigent server -c {path}"
-        lines = [restart, f"  Start it with this config: {start}   (keep your usual --host, --port and other options)"]
-        if running and not using:
-            lines.append(f"  A server is running (pid {running[0]['pid']}) and it was not started with this file: add -c {path}.")
-        elif using:
-            lines.append(f"  The running server (pid {using[0]['pid']}) uses this file: stop it and start it again.")
+        using = [s for s in servers if s.get("config") and os.path.realpath(s["config"]) == os.path.realpath(path)]
+        managed = os.path.realpath(path) == os.path.realpath(self.user_config())
+        lead = (f"Restart the Omnigent server so that it loads {path}. Setup does not restart it." if changed or dry else
+                f"Restart the Omnigent server only if it was started before {path} had this block. Setup does not restart it.")
+        lines = [lead]
+        if managed and (using or not servers):
+            lines.append("  Server that Omnigent starts itself (omnigent start, omnigent run): omnigent stop, then omnigent start. "
+                         "This stops this machine's host daemons too, so do it when no session you need is running.")
+        lines.append(f"  Server you start yourself: stop it, then start it again with this file: omnigent server -c {path}"
+                     "   (keep your usual --host, --port and other options)")
+        if using:
+            lines.append(f"  The running server (pid {using[0]['pid']}) uses this file: restart it to load the block.")
+        elif servers:
+            lines.append(f"  A server is running (pid {servers[0]['pid']}) that was not started with this file, so it ignores the "
+                         f"block: start it with -c {path}.")
         lines.append(f"Then check that Omnigent lists the provider: {VERIFY_COMMAND}   (motel appears under --provider)")
-        result["next"] = {"restart": start, "verify": VERIFY_COMMAND, "server_running": bool(running), "server_uses_config": bool(using)}
+        result["next"] = {"restart": f"omnigent server -c {path}", "verify": VERIFY_COMMAND, "server_running": bool(servers),
+                          "server_uses_config": bool(using)}
         if dry:
             self.say("Dry run: nothing was changed. After a real run:")
         elif not changed:
@@ -369,8 +380,8 @@ class Omnigent:
         elif using:
             row("server", True, f"the running server (pid {using[0]['pid']}) uses {path}", "info")
         else:
-            row("server", False, f"a server is running (pid {servers[0]['pid']}) without -c {path}; the block is not loaded "
-                                 "until the server is restarted with it", "warn")
+            row("server", False, f"a server is running (pid {servers[0]['pid']}) that was not started with {path}; it ignores "
+                                 "the block until it is restarted with that file (omnigent server -c FILE)", "warn")
         ready = all(r["ok"] for r in rows if r["level"] != "warn" and r["check"] != "server")
         doc = {"schema": SCHEMA, "ok": ready, "checks": rows, "config": config,
                "omnigent": {"found": env is not None, "version": env.version if env else None,

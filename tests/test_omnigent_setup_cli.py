@@ -404,17 +404,19 @@ class OtherProviderTest(Case):
 
 
 class WhereTheConfigLivesTest(Case):
-    def test_the_default_is_server_yaml_in_the_omnigent_home_directory(self):
+    def test_the_default_is_the_omnigent_user_config_that_its_own_server_reads(self):
         code, out, _err = self.go("setup", "--dry-run")
         self.assertEqual(code, 0)
-        self.assertIn(f"would create {self.m.home}/.omnigent/server.yaml", out)
+        self.assertIn(f"would create {self.m.home}/.omnigent/config.yaml", out)
+        self.assertIn("omnigent stop, then omnigent start", out)         # the server Omnigent starts itself reads this file
+        self.assertIn(f"omnigent server -c {self.m.home}/.omnigent/config.yaml", out)
 
     def test_omnigent_config_home_moves_the_default(self):
         deps = self.m.deps()
         deps.environ = {"OMNIGENT_CONFIG_HOME": str(self.root / "elsewhere")}
         out = io.StringIO()
         cli.main(["setup", "--dry-run"], deps=deps, out=out, err=io.StringIO())
-        self.assertIn(f"would create {self.root}/elsewhere/server.yaml", out.getvalue())
+        self.assertIn(f"would create {self.root}/elsewhere/config.yaml", out.getvalue())
 
     def test_the_config_of_a_running_server_wins_over_the_default_and_its_port_sets_the_url(self):
         self.m.servers = [{"pid": 4242, "config": str(self.config), "port": 7001}]
@@ -424,11 +426,21 @@ class WhereTheConfigLivesTest(Case):
         self.assertIn("server_url: http://127.0.0.1:7001", self.config.read_text())
         self.assertIn("The running server (pid 4242) uses this file", out)
 
+    def test_a_running_server_that_ignores_the_users_config_is_told_to_use_dash_c_and_not_to_run_omnigent_start(self):
+        self.m.servers = [{"pid": 77, "config": None, "port": 6767}]
+        deps = self.m.deps()
+        deps.environ = {"OMNIGENT_CONFIG_HOME": str(self.root)}
+        out = io.StringIO()
+        cli.main(["setup", "--config", str(self.root / "config.yaml")], deps=deps, out=out, err=io.StringIO())
+        self.assertIn("start it with -c", out.getvalue())
+        self.assertNotIn("omnigent stop, then omnigent start", out.getvalue())
+
     def test_a_running_server_without_the_file_is_told_to_add_dash_c(self):
         self.m.servers = [{"pid": 4242, "config": None, "port": None}]
         _code, out, _err = self.setup()
-        self.assertIn(f"A server is running (pid 4242) and it was not started with this file: add -c {self.config}", out)
+        self.assertIn("A server is running (pid 4242) that was not started with this file, so it ignores the block", out)
         self.assertIn(f"omnigent server -c {self.config}", out)
+        self.assertNotIn("omnigent stop, then omnigent start", out)      # this file is not the one Omnigent's own server reads
         self.assertIn("Setup does not restart it", out)
         self.assertIn("omnigent sandbox create --help", out)
         self.assertEqual([c for c in self.m.commands if "stop" in c or "restart" in c], [])
@@ -556,6 +568,10 @@ class ServerScanTest(unittest.TestCase):
         self.assertEqual(parse_server_argv(["omni", "server", "--config=/etc/o.yaml", "--port=6767", "--no-open"]),
                          {"config": "/etc/o.yaml", "port": 6767})
         self.assertEqual(parse_server_argv(["omnigent", "server"]), {"config": None, "port": None})
+        self.assertEqual(parse_server_argv(["omnigent", "server", "-c", "rel.yaml"], None)["config"], None)       # cwd unreadable
+        self.assertEqual(parse_server_argv(["omnigent", "server", "-c", "/abs.yaml"], None)["config"], "/abs.yaml")
+        spawned = ["/x/bin/python", "-P", "-m", "omnigent.cli", "server", "--host", "127.0.0.1", "--port", "6767", "--config", "/u/config.yaml"]
+        self.assertEqual(parse_server_argv(spawned), {"config": "/u/config.yaml", "port": 6767})
 
     def test_other_commands_are_not_servers(self):
         for argv in (["omnigent", "run"], ["omnigent"], ["vim", "server"], ["/x/python", "-m", "http.server"], []):

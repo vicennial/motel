@@ -23,6 +23,7 @@ DOCS_URL = "https://github.com/vicennial/motel/blob/main/docs/cabins.md#first-ca
 FIRST_CABIN_HINT = f'follow "First cabin" in docs/cabins.md ({DOCS_URL}), then check with: motel cabin doctor'
 INSTALL_OMNIGENT_HINT = "uv tool install omnigent --with motel"
 SERVER_NAMES = ("omnigent", "omni")
+PROCESS_NAMES = (*SERVER_NAMES, "omnigent.cli")      # `python -m omnigent.cli server` is how Omnigent starts its own server
 
 
 @dataclass
@@ -80,19 +81,22 @@ def scan_servers(uid: int | None = None, proc_root: str = "/proc") -> list[dict]
                 continue
             with open(os.path.join(base, "cmdline"), "rb") as handle:
                 argv = handle.read().decode("utf-8", "replace").split("\0")
-            cwd = os.readlink(os.path.join(base, "cwd"))
         except OSError:
             continue
+        try:
+            cwd = os.readlink(os.path.join(base, "cwd"))
+        except OSError:
+            cwd = None                       # some sandboxes hide it: a relative -c path then stays unknown
         item = parse_server_argv(argv, cwd)
         if item:
             found.append({"pid": int(name), **item})
     return found
 
 
-def parse_server_argv(argv: list[str], cwd: str = "/") -> dict | None:
+def parse_server_argv(argv: list[str], cwd: str | None = "/") -> dict | None:
     """``{"config", "port"}`` when ``argv`` is an ``omnigent server`` (or ``omni server``) command, else None."""
     argv = [a for a in argv if a]
-    start = next((i for i, a in enumerate(argv) if os.path.basename(a) in SERVER_NAMES), None)
+    start = next((i for i, a in enumerate(argv) if os.path.basename(a) in PROCESS_NAMES), None)
     if start is None:
         return None
     rest = argv[start + 1:]
@@ -111,7 +115,8 @@ def parse_server_argv(argv: list[str], cwd: str = "/") -> dict | None:
         elif arg.startswith("--port="):
             port = arg.split("=", 1)[1]
     if config:
-        config = os.path.normpath(os.path.join(cwd, os.path.expanduser(config)))
+        config = os.path.expanduser(config)
+        config = os.path.normpath(os.path.join(cwd or "/", config)) if cwd or os.path.isabs(config) else None
     return {"config": config, "port": int(port) if port and port.isdigit() else None}
 
 
