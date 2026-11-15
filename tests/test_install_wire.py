@@ -42,7 +42,7 @@ class SudoersTest(unittest.TestCase):
         for verb in cabin_desk.USER_VERBS:
             self.assertIn(f"{desk} cabin {verb} *", commands)
         self.assertEqual(sorted(c for c in commands if " cabin " in c and not c.endswith("*")),
-                         sorted(f"{desk} cabin {v}" for v in ("ls", "doctor")))
+                         sorted(f"{desk} cabin {v}" for v in ("ls", "doctor", "images")))
 
     def test_operator_verbs_and_wildcards_are_absent(self):
         text = installer.render_sudoers(["alice"], cabins=True)

@@ -54,6 +54,8 @@ def render_cabin(c) -> str:
                      + "; deleting early inside a paid hour refunds nothing)")
     if c.get("sealed"):
         lines.append(sealed_text(c))
+    if offer.get("image_type") == "snapshot" and offer.get("image_name"):
+        lines.append(f"image: {offer['image_name']} (baked on this host, id {offer.get('image_id')})")
     if c.get("disk"):
         lines.append(f"disk: {c['disk']['size_gb']} GB at {c['disk']['guest_path']} (~/disk), same lifetime")
     for w in c.get("warnings") or []:
@@ -65,6 +67,12 @@ def render(verb: str, doc: dict) -> str:
     if verb == "doctor":
         return "\n".join(f"{'ok  ' if c['ok'] else 'FAIL'} {c['check']}{': ' + c['detail'] if c['detail'] else ''}"
                          for c in doc["checks"])
+    if verb == "images":
+        if not doc["images"]:
+            return "no baked images on this host (an operator makes one with: sudo motel-desk tour bake NAME --script FILE)"
+        return "\n".join(f"{i['name']:<40} id {i['id']:<12} {i.get('created') or '-'}"
+                         + (f"  {i['image_size_gb']:g} GB" if isinstance(i.get("image_size_gb"), (int, float)) else "")
+                         for i in doc["images"])
     if verb == "reap" and doc.get("note"):
         return doc["note"]
     if verb == "reap":

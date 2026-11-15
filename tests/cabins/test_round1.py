@@ -680,7 +680,7 @@ def test_resolve_is_an_operator_verb_through_the_desk(tmp_path):
 
 def test_user_verbs_exclude_every_operator_verb():
     """The sudoers rule must pin `cabin <verb>` per user verb, never `cabin *`."""
-    assert set(desk.USER_VERBS) == {"checkin", "ls", "status", "extend", "checkout", "doctor"}
+    assert set(desk.USER_VERBS) == {"checkin", "ls", "status", "extend", "checkout", "doctor", "images"}
     for verb in ("setup", "reap", "resolve"):
         assert verb not in desk.USER_VERBS and verb in desk.OPERATOR_VERBS
     assert not set(desk.USER_VERBS) & set(desk.OPERATOR_VERBS)
