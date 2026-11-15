@@ -124,13 +124,13 @@ other verbs. Guest text in these objects is untrusted data.
 `tour` is `{id, name, status, cleanup, owner, created_at, finished_at, cancel_requested, counts, guests, budget}`; `status`
 adds `supervisor` and `lost_listeners` (`{attempt: reason}` for this tour's attempts whose concierge listener was lost in a
 concierge restart, `null` when the concierge cannot be asked);
-each guest is `{id, status, cleanup, attempts, result}` (plus `reason` when motel itself ended the guest, for example
+each guest is `{id, status, cleanup, attempts, result}` (plus `model` when the spec set one, and `reason` when motel itself ended the guest, for example
 `tours_disabled` or `cabins_disabled`). Guest `status`: `queued`, `booking`, `running`,
 `collecting`, `done`, `failed`, `timed_out`, `over_budget`, `cancelled`. `cleanup`: `live`, `deleting`, `deleted`,
 `deletion_pending` (the server may still bill).
 
 The result record has `schema: "motel/tour-result/v1"`, `tour`, `guest`, `attempt`, `status`, `cleanup`, `auth`
-(`api-key` or `own-login`), `branch`, `base`, `partial`, `error`, and:
+(`api-key` or `own-login`), `model` (only when the spec set one), `branch`, `base`, `partial`, `error`, and:
 
 - `verified`: measured or saved by motel (`duration_s`, `bundle`, `head` and `changed_files` computed from the
   fetched bundle, `artifacts` with digests, `cost_eur`, `usage`, `cabin`). `usage` is `{metered: false, note}` for own-login.
