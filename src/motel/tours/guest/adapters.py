@@ -90,6 +90,10 @@ def env_name_reserved(name: str) -> bool:
     return upper in RESERVED_ENV_NAMES or upper.startswith(RESERVED_ENV_PREFIXES)
 
 
+# Card field ``model``: the value of the adapter CLI's model flag, one argv element (never a shell word). The first character
+# is a letter or digit, so it can never read as an option. The spec and the runner both check it with this pattern.
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$")
+MODEL_MAX = 64
 BINDING_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
 
 
@@ -176,8 +180,22 @@ def _turns(ctx: Context) -> int:
     return value
 
 
+def card_model_ok(value) -> bool:
+    return isinstance(value, str) and len(value) <= MODEL_MAX and bool(MODEL_RE.fullmatch(value))
+
+
+def _model_flag(ctx: Context, flag: str) -> list:
+    """``[flag, model]`` when the card names a model, else nothing (the CLI keeps its own default)."""
+    if "model" not in ctx.card:
+        return []
+    value = ctx.card["model"]
+    if not card_model_ok(value):
+        raise ValueError(f"model must be a string of 1 to {MODEL_MAX} characters, as in claude-sonnet-5-5")
+    return [flag, value]
+
+
 def _claude_argv(ctx: Context) -> list:
-    return ["claude", "-p", "--output-format", "json", "--max-turns", str(_turns(ctx)),
+    return ["claude", "-p", "--output-format", "json", "--max-turns", str(_turns(ctx)), *_model_flag(ctx, "--model"),
             "--no-session-persistence", "--dangerously-skip-permissions", "--", ctx.card["prompt"]]
 
 
@@ -208,7 +226,7 @@ def _claude_files(ctx: Context) -> dict:
 
 
 def _codex_argv(ctx: Context) -> list:
-    return ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral",
+    return ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", *_model_flag(ctx, "--model"),
             "--dangerously-bypass-approvals-and-sandbox", "--", ctx.card["prompt"]]
 
 
