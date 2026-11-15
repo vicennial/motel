@@ -11,6 +11,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
   config (backup first, atomic, idempotent, other keys and comments kept). It never restarts the server. `status` is the
   same checks, read-only. `mcp-config` prints the MCP snippet for `motel mcp --with-tours`. See
   [docs/omnigent.md](docs/omnigent.md) and [docs/cli-json.md](docs/cli-json.md).
+- Baked images for cabins and the Omnigent provider (experimental): `motel cabin checkin|run --image NAME` starts a cabin from an
+  image the operator baked on this host, `motel cabin images` lists them, and the desk accepts only this host's recorded, labelled
+  snapshots. The provider takes `image:` in its `motel:` block. `motel omnigent bake-script` prints the bake script,
+  `motel omnigent setup --image NAME` writes `image` and `bootstrap: none`, and `status` checks that the image exists. Run
+  `motel install --upgrade` to add the one new sudoers line. See [docs/cabins.md](docs/cabins.md#start-from-a-baked-image) and
+  [docs/omnigent.md](docs/omnigent.md#faster-first-session-bake-an-image).
 
 ## [0.1.0] - 2026-11-11
 

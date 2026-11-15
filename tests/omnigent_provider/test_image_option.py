@@ -103,9 +103,8 @@ def test_the_pip_bootstrap_adds_no_probe_at_provision(rig, tmp_path):
 def test_the_bake_script_matches_the_pip_bootstrap():
     import re
 
-    from omnigent.community.sandbox.motel.config import DEFAULT_HARNESS_PACKAGES, NPM_SPEC_RE, VERSION_RE, release_version
-
     from motel.omnigent_setup import bake_script
+    from omnigent.community.sandbox.motel.config import DEFAULT_HARNESS_PACKAGES, NPM_SPEC_RE, VERSION_RE, release_version
 
     base = tp.base_setup()
     apt = re.search(r"apt-get install -y -q (.+)\n", base).group(1).split()

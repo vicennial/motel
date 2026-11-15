@@ -164,9 +164,10 @@ a user or group per lease and was judged not worth the complexity for this first
 
 | command | what it does |
 |---|---|
-| `motel cabin run [--type T] [--for D] [--task N] [--disk SIZE] [--keep] -- CMD...` | check in, `rsync` the current git checkout (tracked files plus untracked files that are not ignored) to `~/work`, run `CMD` there, check out. The exit status is the command's when the command ran and the cabin is released or only waits for provider cleanup (see the exit rules below). With `--keep` it stays. With `--json` the last line of stdout is one object `{schema, ok, cabin, exit_code, kept, released, hourly_net_eur, cost_estimate_net_eur}` (plus `billed_hours`, the started hours the estimate counts, when the provider bills per started hour); the command's own stdout and stderr are passed through untouched, and the `motel:` status lines stay on stderr. |
-| `motel cabin run --cabin ID [--json] -- CMD...` | the same sync and run in a cabin you already hold: no checkin, no checkout, the cabin keeps its own checkout time. Not combined with `--type`, `--for`, `--task`, `--disk` or `--keep`. |
-| `motel cabin checkin [--type T] [--for D] [--task N] [--disk SIZE] [--json]` | take a cabin; prints its id |
+| `motel cabin run [--type T] [--for D] [--task N] [--disk SIZE] [--image NAME] [--keep] -- CMD...` | check in, `rsync` the current git checkout (tracked files plus untracked files that are not ignored) to `~/work`, run `CMD` there, check out. The exit status is the command's when the command ran and the cabin is released or only waits for provider cleanup (see the exit rules below). With `--keep` it stays. With `--json` the last line of stdout is one object `{schema, ok, cabin, exit_code, kept, released, hourly_net_eur, cost_estimate_net_eur}` (plus `billed_hours`, the started hours the estimate counts, when the provider bills per started hour, and `image`, the image name, when a baked image was used); the command's own stdout and stderr are passed through untouched, and the `motel:` status lines stay on stderr. |
+| `motel cabin run --cabin ID [--json] -- CMD...` | the same sync and run in a cabin you already hold: no checkin, no checkout, the cabin keeps its own checkout time. Not combined with `--type`, `--for`, `--task`, `--disk`, `--image` or `--keep`. |
+| `motel cabin checkin [--type T] [--for D] [--task N] [--disk SIZE] [--image NAME] [--json]` | take a cabin; prints its id |
+| `motel cabin images [--json]` | the baked images you can start a cabin from: name, id, created, size |
 | `motel cabin ls [--json]` / `status ID [--json]` | your cabins; provider inventory status |
 | `motel cabin doctor [--json]` | the setup checks, for your own cabins (root sees all); a failing check exits 8 |
 | `motel cabin ssh ID [-- CMD...]` | open a shell, or run `CMD` |
@@ -176,6 +177,30 @@ a user or group per lease and was judged not worth the complexity for this first
 `--disk 200G` adds a volume in the same cabin project. It is attached at creation, mounted at
 `/mnt/cabin-disk` (symlinked as `~/disk`), carries the cabin's labels and expiry, and is deleted with the
 cabin after the server is verified absent. It is priced into the hourly cap.
+
+### Start from a baked image
+
+A bare cabin is a stock Ubuntu server. An operator can bake an image once (a snapshot with software already installed,
+made with `sudo motel-desk tour bake NAME --script setup.sh`, see [Tours](tours.md#operator-setup)), and a cabin can then
+start from it: `motel cabin checkin --image NAME` or `motel cabin run --image NAME -- CMD`. `motel cabin images` lists the
+names. `--image` takes a name or the numeric id from that list.
+
+- **Who may use an image.** Any user who may use cabins (`allow_users`) may start from any image baked on this host. There is
+  no list per user. The operator chose the script, and the bake refuses to snapshot a server that holds known credential
+  files, but the scan is best effort: put nothing private in an image.
+- **What the desk accepts.** The desk checks the argument itself and does not trust the client. It must be a plain name (1 to 40
+  lowercase letters, digits and hyphens) or digits only, and it must match exactly one image that this host baked: a snapshot with this
+  host's motel labels, recorded in the host's own image list and available. It never selects another snapshot, a
+  system image or an image of another host in the cloud project. An unknown or ambiguous name is refused (exit 3; for two images
+  with the same name, use the id).
+- **Receipt.** The receipt and `--json` show the image name (`receipt.image`, `offer.image_name`) when a baked image was used,
+  and nothing when the stock image was.
+- **Upgrading.** `motel cabin images` needs one new line in the sudoers rule. After upgrading the `motel` package, the
+  operator runs `sudo uvx --from motel motel install --upgrade` to install the new desk and rule. Until then `--image` and
+  `images` fail with a message that says so, and no cabin is started. `motel doctor` reports a rule that differs.
+- **Cost.** A snapshot is billed by the cloud for its size and the time it exists. Delete it with
+  `sudo motel-desk tour image rm ID` when you no longer need it. Software in an image does not update itself: bake again to
+  change it.
 
 `run` first checks the cap against the live provider price, so it can refuse with exit 3 before creating
 anything. The sync honours `.gitignore`, so ignored secrets such as `.env` files are not copied. Untracked
@@ -353,7 +378,7 @@ estimate; the provider invoice is authoritative.
 ## What the front desk allows
 
 The sudoers rule for ordinary users must pin **each** user verb on the cabin desk, one line per verb:
-`motel-desk cabin checkin *`, `... ls *`, `... status *`, `... extend *`, `... checkout *`, `... doctor *`. It must
+`motel-desk cabin checkin *`, `... ls *`, `... status *`, `... extend *`, `... checkout *`, `... doctor *`, `... images *`. It must
 never be `motel-desk cabin *`: `setup`, `reap` and `resolve` are operator commands (root, or an administrator
 using `sudo motel-desk cabin ...`), and the housekeeping timer calls `motel-desk cabin reap --apply`.
 `motel.cabins.desk.USER_VERBS` is the list to render from.

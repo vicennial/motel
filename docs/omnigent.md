@@ -33,12 +33,12 @@ What is still true:
 - Cabins must work first. Setup does not create a server and does not set up the front desk.
 - This is experimental, and so are cabins. Use a dedicated Hetzner project and a low price cap.
 - The first session on a bare cabin takes minutes. The cabin installs Omnigent and the agent CLIs with pip and npm
-  ([First launch can be slow](#how-it-works)).
+  ([First launch can be slow](#how-it-works)). An operator can [bake an image](#faster-first-session-bake-an-image) to avoid that.
 - Omnigent needs Python 3.12 or newer. motel's own code needs 3.11.
 
 ## What setup does
 
-`motel omnigent setup [--config PATH] [--server-url URL] [--server-type TYPE] [--ttl TTL] [--dry-run] [--yes] [--json]`
+`motel omnigent setup [--config PATH] [--server-url URL] [--server-type TYPE] [--ttl TTL] [--image NAME] [--dry-run] [--yes] [--json]`
 runs four steps in order, prints one line for each, and stops at the first one that fails. The message says what to do next.
 
 1. **Cabins work.** It asks the front desk for the same checks as `motel cabin doctor`. It creates nothing. If cabins are
@@ -65,7 +65,7 @@ ignores the block until you start it with the file; setup and `status` say so.
 
 - It makes a backup next to the file first, named `FILE.bak-YYYYMMDDTHHMMSS`, with the same mode.
 - It adds `sandbox: {provider: motel, server_url: ...}`. The server URL is `http://127.0.0.1:6767`, or the port of the running
-  server, or `--server-url`. A `motel:` sub-block (`server_type`, `ttl`) is written only for the flags you pass.
+  server, or `--server-url`. A `motel:` sub-block (`server_type`, `ttl`, and `image` with `bootstrap: none`) is written only for the flags you pass.
 - Every other key and comment stays as it was. The edited text is parsed with Omnigent's own YAML library and parser before
   anything is written, and the write is atomic with the original file mode (a new file is mode `0600`).
 - A second run changes nothing and says so. If the file already has the motel block, setup only touches a line when a flag
@@ -78,8 +78,52 @@ ignores the block until you start it with the file; setup and `status` say so.
 
 `motel omnigent status [--config PATH] [--json]` runs the same checks without changing anything and shows a short table:
 cabins, Omnigent and its version, whether the provider is visible, whether the config has the block, whether the block is
-what setup would write, and whether a running server uses the file. It exits 8 when something is left to do.
+what setup would write, and whether a running server uses the file. When the config names an `image:`, it also asks the front
+desk whether that image exists on this host. It exits 8 when something is left to do.
 The JSON shapes are in [cli-json.md](cli-json.md#omnigent-setup-motel-omnigent----json).
+
+### Faster first session: bake an image
+
+A bare cabin installs Omnigent and the agent CLIs on its first launch, which takes minutes. An operator can do that work
+once, in an image, so that a session starts from a cabin that already has it. Three commands, on the machine with the front
+desk (the second one needs root, the first and third do not):
+
+```bash
+motel omnigent bake-script > setup.sh && sudo motel-desk tour bake omnigent --script setup.sh
+motel omnigent setup --image omnigent
+```
+
+1. `motel omnigent bake-script [--omnigent-version X] [--harness-package SPEC]... [--no-harness]` prints the setup script. It
+   pins one Omnigent release: the flag, else `$OMNIGENT_VERSION`, else the version installed here (host and server must
+   match). Read the script before you bake it. It is short, and it runs as root on a disposable cabin.
+2. `sudo motel-desk tour bake omnigent --script setup.sh` checks in a cabin, runs the script, cleans the cabin, refuses to
+   continue if it finds a credential file, and snapshots it as the image `omnigent`
+   ([Tours](tours.md#operator-setup)). It takes some minutes and costs one cabin for that time. It is refused on a tailscale
+   host.
+3. `motel omnigent setup --image omnigent` writes `image: omnigent` and `bootstrap: none` into the `motel:` block. Restart the
+   Omnigent server as setup says. From then on every cabin the provider checks in starts from the image.
+
+What the image contains: what the `bootstrap: pip` path installs on a bare cabin. That is `git tmux curl ca-certificates
+python3-venv python3-pip python3-yaml` from apt, a virtual environment at `/opt/omnigent-motel/venv` with the pinned
+`omnigent`, a link at `/usr/local/bin/omnigent` (on the PATH of every user), and, unless `--no-harness`, `nodejs` and `npm` from apt plus
+the `harness_packages` (default `@anthropic-ai/claude-code` and `@openai/codex`) installed system wide with `npm -g`.
+Pass the same list to `--harness-package` that you use for `harness_packages` in the config. The script removes the pip
+and npm caches, and puts nothing in a user's home.
+
+- **The two keys are separate.** `image:` chooses where a cabin starts. `bootstrap:` chooses whether the provider installs
+  Omnigent. The provider never guesses one from the other. With `bootstrap: none` it checks, as soon as the cabin accepts
+  commands, that `omnigent` is on the PATH, and if not it checks the cabin out and says so. With `image:` and the default
+  `bootstrap: pip`, the provider skips the install because `omnigent` is already there.
+- **Who can use it.** Any user allowed to use cabins on this host can start from any image baked on it
+  ([Cabins](cabins.md#start-from-a-baked-image)). Do not bake credentials into it. API keys still travel by name through `env`.
+- **Cost.** The snapshot is billed by the cloud by size, per GB-month, at the cloud's price, for as long as it exists
+  (`sudo motel-desk tour image ls` shows its size; `tour image rm ID` deletes it). A cabin from an image bills as usual.
+- **Upgrades.** The image does not update itself. To change the Omnigent version or the agent CLIs, bake a new image (under a
+  new name, or after `tour image rm`) and point `image:` at it. If the Omnigent server is upgraded, the host in the image must
+  match it.
+- **Not measured yet.** The aim is a first session that starts in about a minute instead of several. That has not been timed on a
+  real cabin, so no number is claimed here. Also check that the apt `nodejs` on the cabin is new enough for the agent CLIs you
+  install: the provider uses the same packages and has the same limit.
 
 ### Starting tours from a session
 
@@ -131,7 +175,8 @@ sandbox:
     harness_packages:                     # npm packages for the coding-harness CLIs (these are the defaults)
       - "@anthropic-ai/claude-code"       # add @VERSION to each entry to pin it; [] installs none
       - "@openai/codex"
-    bootstrap: pip                        # none = omnigent is already on the cabin's PATH
+    image: null                           # a baked image name (motel cabin images); see "bake an image" above
+    bootstrap: pip                        # none = omnigent is already on the cabin's PATH (use it with image)
     wait_for_harnesses: false             # true = block the first launch until the harness CLIs are installed
     max_streams: 64                       # most connections the relay carries at once (1 to 1024)
     task: omnigent                        # label prefix on the cabin; a unique suffix is added
@@ -162,7 +207,7 @@ Omnigent server (your machine)                     cabin (disposable server)
 
 | Omnigent calls | motel does |
 |---|---|
-| `provision(name)` | `motel cabin checkin --for TTL --task NAME`, then waits until the cabin accepts commands. The sandbox id is the cabin id. If the cabin never answers, it is checked out again. |
+| `provision(name)` | `motel cabin checkin --for TTL --task NAME` (and `--image NAME` when `image:` is set), then waits until the cabin accepts commands. The sandbox id is the cabin id. If the cabin never answers, it is checked out again. |
 | `run`, `run_background`, `exec_foreground`, `stream_exec` | `motel cabin ssh ID -- sh -s`, with the script on stdin. Nothing sensitive is in argv. |
 | `put` | `motel cabin ssh ID -- sh -c 'cat > FILE'`, then compares SHA-256 on both ends. |
 | `keep_alive` | `motel cabin extend ID --for TTL`. It also checks the relay tunnel, but only one that already exists; it never starts a second relay. A refusal is logged and returns `False`; the cabin then ends at its current checkout time. |
@@ -193,11 +238,11 @@ session may find a harness missing for a minute or two. If that install fails, i
 `/tmp/omnigent-harness-install.failed`. Then `keep_alive` (checked at most every ten minutes) and `resume` log a
 warning (keep_alive once per cabin, resume on each wake) that the harness CLIs may be missing, a command that fails reports it, and the next launch or resume runs the
 install again; the marker is cleared when it succeeds. Set `wait_for_harnesses: true` to block instead, at the cost of
-a longer first launch. The fast path would be a cabin
-image with omnigent and the harness CLIs already installed, together with `bootstrap: none`. motel cannot select such an
-image for a cabin yet: tour images exist (`motel-desk tour bake`), but `motel cabin checkin` has no image option. On
-a custom image with `bootstrap: none`, install `python3-yaml` and the harness CLIs too: the host-config writer needs the
-first, and `bootstrap: none` installs neither.
+a longer first launch. The fast path is a baked image
+with omnigent and the harness CLIs already installed, together with `bootstrap: none`
+([bake an image](#faster-first-session-bake-an-image)). On an image you bake yourself with `bootstrap: none`, install
+`python3-yaml` and the harness CLIs too: the host-config writer needs the first, and `bootstrap: none` installs neither.
+`bake-script` does both.
 
 **Reaching your server.** The cabin firewall allows inbound ssh only from this machine, and outbound HTTP and HTTPS only
 to the public internet, minus this machine's own address and private ranges. So a cabin cannot dial a server on

@@ -80,6 +80,31 @@ stderr line: `motel: no room nope-ab12. Try: motel ls --mine`.
 `sudo` itself refusing (the caller is not in `allow_users`) is reported as exit 5 with a message that names
 `allow_users`.
 
+## Cabins (`motel cabin ... --json`)
+
+Experimental. `cabin checkin --json` prints the cabin object itself; the other verbs wrap it as `{"cabin": {...}}`. When the cabin
+started from a baked image (`--image`), these fields are set, and are absent or describe the stock image otherwise:
+
+| key | meaning |
+|---|---|
+| `offer.image_id`, `offer.image_name` | the image the server was created from. For a baked image the name is the baked name |
+| `offer.image_type` | `snapshot` for a baked image, `system` for the stock image |
+| `receipt.image` | the baked image name. The key is absent when the stock image was used |
+
+`cabin run --json` ends with one object (see [Cabins](cabins.md#using-a-cabin)); it has `image` (the baked image name) only when
+one was used.
+
+`cabin images --json` lists the images this host's operator baked, which the desk accepts for `--image`:
+
+```json
+{"schema": "motel/v1", "ok": true,
+ "images": [{"id": 4711, "name": "omnigent", "created": "2026-11-08T12:30:00Z", "image_size_gb": 1.5, "disk_size_gb": 40}]}
+```
+
+`images` is an empty list when nothing was baked. `image_size_gb` and `disk_size_gb` can be `null`. A front desk that predates
+`--image` answers `checkin --image` with exit 2 and `error` "the installed front desk is older than this motel and does not know --image";
+for `images`, an older desk or sudoers rule gives exit 2 or 1 with a similar `error` and the hint to run `motel install --upgrade`.
+
 ## Tours (`motel tour ... --json`)
 
 Experimental. Every verb prints one object with `"schema": "motel/v1"`; failures use the same error object as the
@@ -158,8 +183,11 @@ A failed `setup` has the same object with `ok: false` plus `error`, `hint` and `
 ```
 
 `checks` holds `cabins`, `omnigent`, `provider visible`, `config block`, `block matches setup` and `server`; `level` is
-`ok`, `fail`, `warn` or `info`. `ok` is true when no check other than `server` fails. `mcp-config` prints the MCP server
-snippet (`{"mcpServers": {"motel": {...}}}`) and nothing else on stdout.
+`ok`, `fail`, `warn` or `info`. When the config names a baked `image:`, `checks` also holds `baked image` (does `motel cabin images`
+list that name?) and, if `bootstrap` is not `none`, an `info` row `bootstrap`; the top-level `image` object is
+`{"name": null or "omnigent", "bootstrap": null or "none", "exists": null, true or false}`. `ok` is true when no check other than `server` fails. `mcp-config` prints the MCP server
+snippet (`{"mcpServers": {"motel": {...}}}`) and nothing else on stdout. `setup --image NAME` writes `image: NAME` and `bootstrap: none`
+into the `motel:` block. `bake-script` prints a shell script on stdout and has no JSON form.
 
 ## Extension point
 

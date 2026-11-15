@@ -322,7 +322,7 @@ and such an administrator (who need not be in `allow_users`) see every tour with
 All keys, the binding options, and the `[tours.own_login]` table: [configuration.md](configuration.md) and
 [concierge.md](concierge.md). A baked image (`sudo motel-desk tour bake NAME --script setup.sh`) holds your agent CLIs;
 `tour image ls|rm` manages them: `ls` shows `recorded` for each image (true when this host baked it), and `rm` only
-removes recorded images. A bake is refused on a tailscale host. `motel doctor` checks the sudoers rule and warns while own-login is enabled.
+removes recorded images. Users can also start an ordinary cabin from these images: see [Start from a baked image](cabins.md#start-from-a-baked-image). A bake is refused on a tailscale host. `motel doctor` checks the sudoers rule and warns while own-login is enabled.
 
 ## Inspecting the bundle
 
