@@ -4,9 +4,10 @@
 SSH key, calls the root-owned front desk through ``sudo -n`` and then talks to the cabin over SSH. It never sees
 the cloud token and never passes raw paths or provider IDs to the desk.
 
-    motel cabin run [--type T] [--for D] [--keep] [--disk SIZE] [--json] -- CMD...
+    motel cabin run [--type T] [--for D] [--keep] [--disk SIZE] [--image NAME] [--json] -- CMD...
     motel cabin run --cabin ID [--json] -- CMD...      (sync and run in a cabin you hold; no checkin, no checkout)
-    motel cabin checkin [--type T] [--for D] [--task NAME] [--disk SIZE] [--json]
+    motel cabin checkin [--type T] [--for D] [--task NAME] [--disk SIZE] [--image NAME] [--json]
+    motel cabin images [--json]
     motel cabin ls | status ID | extend ID --for D | checkout ID | doctor | ssh ID [-- CMD...]
 """
 
@@ -63,6 +64,7 @@ examples:
   motel cabin run -- make test            run a command on a fresh server, then delete the server
   motel cabin run --keep -- ./build.sh    keep the cabin afterwards; open it with: motel cabin ssh ID
   motel cabin checkin --for 2h            take a cabin and print its id (it expires after 2h)
+  motel cabin images                      list the images your operator baked; start one with --image NAME
   motel cabin ls                          list your cabins
   motel cabin checkout ID                 delete a cabin now and print its receipt
 
@@ -87,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--for", dest="ttl", default=None, help="checkout time from now, e.g. 90m, 2h (default 2h)")
     launch.add_argument("--task", default=None, help="short name for the cabin id")
     launch.add_argument("--disk", default=None, help="extra volume with the cabin's lifecycle, e.g. 200G")
+    launch.add_argument("--image", default=None, metavar="NAME",
+                        help="start from an image the operator baked on this host (a name or id from `motel cabin images`)")
     parser = CabinParser(prog="motel cabin", allow_abbrev=False, formatter_class=argparse.RawDescriptionHelpFormatter,
                          description=HELP_DESCRIPTION, epilog=HELP_EXAMPLES)
     sub = parser.add_subparsers(dest="verb", required=True, parser_class=CabinParser, metavar="VERB")
@@ -97,6 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="run in this existing cabin: sync and run only, no checkin and no checkout")
     sub.add_parser("checkin", parents=[launch, common], allow_abbrev=False, help="take a cabin; prints its id")
     sub.add_parser("ls", parents=[common], allow_abbrev=False, help="list your cabins")
+    sub.add_parser("images", parents=[common], allow_abbrev=False, help="list the baked images you can start a cabin from")
     sub.add_parser("doctor", parents=[common], allow_abbrev=False, help="check the cabin setup (your cabins only)")
     p = sub.add_parser("status", parents=[common], allow_abbrev=False, help="show one cabin")
     p.add_argument("cabin")
@@ -168,6 +173,12 @@ def worktree_files(root: str, runner=subprocess.run) -> list:
         if os.path.lexists(os.path.join(root, name)):
             out.append(name)
     return out
+
+
+def baked_image(offer) -> str | None:
+    """The name of the baked image a cabin was started from, or None for the stock image."""
+    offer = offer or {}
+    return offer.get("image_name") if offer.get("image_type") == "snapshot" else None
 
 
 def encode_job(command, cwd=REMOTE_DIR) -> str:
@@ -251,6 +262,10 @@ class Cli:
         if args.disk:
             parse_size_gb(args.disk)
             out += ["--disk", args.disk]
+        if args.image is not None:
+            from motel.tours.bake import parse_image_spec
+            parse_image_spec(args.image)        # the desk checks it again: it never trusts this client
+            out += ["--image", args.image]
         return out
 
     def checkin(self, args, want_json=False):
@@ -264,6 +279,9 @@ class Cli:
             rc, doc = self.desk_call(["checkin", *launch, "--client-key", pub])
             view = doc.get("cabin") if isinstance(doc, dict) else None
             if rc != 0 or not view or not view.get("lease_id"):
+                if args.image is not None and "unrecognized arguments" in str(doc.get("error", "")):
+                    doc = {"ok": False, "code": rc, "error": "the installed front desk is older than this motel and does not "
+                           "know --image, so no cabin was started", "hint": "ask the host admin to run: sudo uvx --from motel motel install --upgrade"}
                 return self.fail(rc, doc, want_json), None
             final = self.cabin_dir(view["lease_id"])
             os.rename(pending, final)
@@ -318,6 +336,8 @@ class Cli:
         hours = (done.get("billing") or {}).get("billed_hours")
         if hours is not None:
             doc["billed_hours"] = hours
+        if baked_image(offer):
+            doc["image"] = baked_image(offer)
         print("", file=self.out)
         print(json.dumps(doc, sort_keys=True), file=self.out)
         self.out.flush()
@@ -334,7 +354,8 @@ class Cli:
             return rc
         cabin = view["lease_id"]
         offer = view.get("offer") or {}
-        self.say(f"cabin {cabin} · EUR {offer.get('total_hourly_net_eur')}/h net · ready in "
+        image = f" · image {baked_image(offer)}" if baked_image(offer) else ""
+        self.say(f"cabin {cabin} · EUR {offer.get('total_hourly_net_eur')}/h net{image} · ready in "
                  f"{int(self.monotonic() - started)}s")
         result = EXIT_ERROR
         done = None
@@ -356,8 +377,8 @@ class Cli:
     def run_in(self, args) -> int:
         """``run --cabin ID -- CMD``: sync this worktree to a cabin you already hold and run there. Nothing is
         checked in and nothing is checked out; the cabin keeps its own checkout time."""
-        if any((args.server_type, args.ttl, args.task, args.disk, args.keep)):
-            raise Usage("--cabin runs in an existing cabin: --type, --for, --task, --disk and --keep do not apply",
+        if any((args.server_type, args.ttl, args.task, args.disk, args.keep, args.image)):
+            raise Usage("--cabin runs in an existing cabin: --type, --for, --task, --disk, --image and --keep do not apply",
                         "motel cabin run --cabin ID -- CMD")
         cabin = args.cabin
         self.ssh_cfg(cabin)  # validates the id and that this account holds the access files
@@ -375,6 +396,18 @@ class Cli:
             result = self.remote_run(cabin, view, args.command)
         self.result_line(args, cabin, result, kept=True, offer=view.get("offer"))
         return result
+
+    def images(self, want_json) -> int:
+        """``images``: the baked images this host offers. A desk or sudoers rule from before this verb gets a clear answer."""
+        rc, doc = self.desk_call(["images"])
+        error = str(doc.get("error", ""))
+        if rc != 0 and ("invalid choice" in error or "gave no answer" in error):
+            doc = {"ok": False, "code": rc, "error": "the installed front desk or its sudoers rule is older than this motel and "
+                   "has no `images` verb", "hint": "ask the host admin to run: sudo uvx --from motel motel install --upgrade"}
+        if rc != 0 or doc.get("ok") is False or not isinstance(doc.get("images"), list):
+            return self.fail(rc, doc, want_json)
+        print(json.dumps(doc, indent=1, sort_keys=True) if want_json else render("images", doc), file=self.out)
+        return EXIT_OK
 
     def checkout_with_retry(self, cabin: str) -> tuple:
         """The desk's checkout reply. A busy cabin (the reaper holds its lock for a short activity check) is retried
@@ -471,7 +504,8 @@ def main(argv=None, **kw) -> int:
                 print(json.dumps(view, indent=1, sort_keys=True), file=cli.out)
             else:
                 print(view["lease_id"], file=cli.out)
-                cli.say(f"{view['lease_id']} · {(view.get('offer') or {}).get('server_type')} · expires "
+                image = f" · image {baked_image(view.get('offer'))}" if baked_image(view.get("offer")) else ""
+                cli.say(f"{view['lease_id']} · {(view.get('offer') or {}).get('server_type')}{image} · expires "
                         f"{view['expires_at']}. Deletion is final: copy results out before checkout. "
                         f"Try: motel cabin ssh {view['lease_id']}")
             return rc
@@ -482,6 +516,8 @@ def main(argv=None, **kw) -> int:
             tail = ["motel-guest run " + encode_job(command, cwd=REMOTE_DIR)] if command else []
             return cli.runner(["/usr/bin/ssh", "-F", cfg, *(["-T"] if command else []), "--", alias, *tail],
                               check=False).returncode
+        if args.verb == "images":
+            return cli.images(want_json)
         return cli.simple(args.verb, args, want_json)
     except Fail as exc:
         print(json.dumps(exc.as_json()) if want_json else exc.line(), file=cli.out if want_json else cli.err)
