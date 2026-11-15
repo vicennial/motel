@@ -121,8 +121,49 @@ Operator verbs (`reap`, `bake`, `image ls|rm`, `own-login set|status|clear`) pri
 `recorded`: whether this host baked the image; `image rm` refuses unrecorded ones); `own-login status`
 shows presence and modification time only, never the token.
 
+## Omnigent setup (`motel omnigent ... --json`)
+
+Experimental. `setup` and `status` print one object with `"schema": "motel/v1"`. Exit codes: 0 ok, 2 usage, 3 the config
+was not edited (a block for another provider without `--yes`, or a file that cannot be edited safely), 5 an install or file
+error, 8 not ready (cabins or Omnigent missing, or `status` found something to do).
+
+`setup`:
+
+```json
+{"schema": "motel/v1", "ok": true, "dry_run": false, "changed": true,
+ "steps": [{"step": "Cabins work", "ok": true, "status": "ok", "detail": "..."}],
+ "config": {"path": "/srv/omnigent/server.yaml", "source": "default", "action": "add", "backup": "/srv/omnigent/server.yaml.bak-20261114T103005"},
+ "next": {"restart": "omnigent server -c /srv/omnigent/server.yaml", "verify": "omnigent sandbox create --help",
+          "server_running": false, "server_uses_config": false}}
+```
+
+| key | meaning |
+|---|---|
+| `steps[].status` | `ok`, `installed`, `written`, `unchanged`, `would install`, `would change`, `not written` or `FAILED`. The steps stop at the first one with `ok: false` |
+| `config.source` | where the path came from: `--config`, `the running server (pid N)` or `default` (`server.yaml` in the Omnigent config home) |
+| `config.action` | `create`, `add`, `update`, `replace`, `unchanged` or `manual`; `null` when setup stopped earlier |
+| `config.backup` | the backup file, or `null` (no backup for a new file, a dry run or an unchanged file) |
+| `config.block` | present with `manual` (and when the edited file failed its check): the exact block to paste |
+| `next` | present on success: what is left to do. `setup` never restarts the server |
+
+A failed `setup` has the same object with `ok: false` plus `error`, `hint` and `code` (the failure keys above).
+
+`status` is read-only:
+
+```json
+{"schema": "motel/v1", "ok": false,
+ "checks": [{"check": "provider visible", "ok": false, "level": "fail", "detail": "..."}],
+ "config": {"path": "...", "source": "default", "exists": false, "present": false, "matches": false, "action": "create"},
+ "omnigent": {"found": true, "version": "0.21.0", "executable": "...", "python": "...", "kind": "uv tool"}}
+```
+
+`checks` holds `cabins`, `omnigent`, `provider visible`, `config block`, `block matches setup` and `server`; `level` is
+`ok`, `fail`, `warn` or `info`. `ok` is true when no check other than `server` fails. `mcp-config` prints the MCP server
+snippet (`{"mcpServers": {"motel": {...}}}`) and nothing else on stdout.
+
 ## Extension point
 
 `motel cabin ...` is passed (without the word `cabin`) to `motel.cabins.cli.main(argv)` when that module is
 installed; otherwise it exits 2 with `cabins are not installed`. `motel mcp ...` is routed the same way to
-`motel.mcp_server.main(argv)` (exit 2 with `MCP server not installed` if the module is absent).
+`motel.mcp_server.main(argv)` (exit 2 with `MCP server not installed` if the module is absent). `motel omnigent ...` is routed to
+`motel.omnigent_setup.cli.main(argv)` in the same way.

@@ -37,7 +37,8 @@ class CliParser(argparse.ArgumentParser):
 ROOM_VERBS = ("checkin", "ls", "extend", "checkout", "restore")
 HELP_GROUPS = (
     ("cabins (experimental: disposable servers in your own cloud account)", (
-        ("cabin", "run a command on a fresh server and delete it: motel cabin --help"),)),
+        ("cabin", "run a command on a fresh server and delete it: motel cabin --help"),
+        ("omnigent", "use cabins as an Omnigent sandbox provider: motel omnigent setup"))),
     ("tours (experimental: swarms of bounded agent jobs, one fresh cabin per guest)", (
         ("tour", "start a tour, wait for it, fetch its results: motel tour --help"),)),
     ("setup", (
@@ -129,6 +130,8 @@ ROUTES = {
     "mcp": ("motel.mcp_server", ("motel.mcp_server",), "MCP server not installed in this version of motel"),
     "install": ("motel.installer", ("motel.installer",), "the installer is not part of this version of motel"),
     "skill": ("motel.skill", ("motel.skill",), "the agent skill is not part of this version of motel"),
+    "omnigent": ("motel.omnigent_setup.cli", ("motel.omnigent_setup", "motel.omnigent_setup.cli"),
+                 "the Omnigent setup command is not installed in this version of motel"),
     "try": ("motel.onboard.demo", ("motel.onboard", "motel.onboard.demo"), "the guided demo is not installed in this version of motel"),
 }
 

@@ -5,6 +5,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `motel omnigent setup | status | mcp-config` (experimental): one command that checks cabins and Omnigent, installs motel
+  into Omnigent's environment when the provider is missing there, and writes the `sandbox:` block into the Omnigent server
+  config (backup first, atomic, idempotent, other keys and comments kept). It never restarts the server. `status` is the
+  same checks, read-only. `mcp-config` prints the MCP snippet for `motel mcp --with-tours`. See
+  [docs/omnigent.md](docs/omnigent.md) and [docs/cli-json.md](docs/cli-json.md).
+
 ## [0.1.0] - 2026-11-11
 
 First release. motel gives an agent disk and servers by the hour: private scratch directories on temporary cloud
