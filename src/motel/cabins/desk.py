@@ -32,6 +32,7 @@ from motel.cabins.errors import (
     GuardRefused,
     NotFound,
     PolicyRefused,
+    Prerequisite,
     Unavailable,
     Usage,
 )
@@ -50,7 +51,7 @@ from motel.cabins.util import (
 )
 from motel.errors import install_hint
 
-USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "doctor")
+USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "doctor", "images")
 OPERATOR_VERBS = ("reap", "setup", "resolve")
 
 
@@ -83,7 +84,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", required=True)
     p.add_argument("--client-key", required=True)
     p.add_argument("--disk", default=None)
+    p.add_argument("--image", default=None, help="a baked image of this host, by name or numeric id")
     sub.add_parser("ls", parents=[common], allow_abbrev=False)
+    sub.add_parser("images", parents=[common], allow_abbrev=False)
     p = sub.add_parser("status", parents=[common], allow_abbrev=False)
     p.add_argument("cabin")
     p = sub.add_parser("extend", parents=[common], allow_abbrev=False)
@@ -270,6 +273,9 @@ def local_checks(paths: CabinPaths, cfg: CabinConfig) -> list:
 def execute(args, *, paths: CabinPaths, caller: Caller, groups_fn=groups_of, token_reader=None, secret_reader=None,
             token_file_uid: int = 0, **wiring) -> dict:
     verb = args.verb
+    if verb == "checkin" and args.image is not None:
+        from motel.tours import bake
+        bake.parse_image_spec(args.image)       # the syntax is checked before anything else is read or asked of the cloud
     # Operator verbs need a desk running as root (euid 0, which real_caller verifies), including `sudo motel-desk
     # cabin setup`, where SUDO_UID names the admin. The sudoers rule pins the first argument to the user verbs,
     # so a user in allow_users cannot reach these through sudo.
@@ -308,10 +314,21 @@ def execute(args, *, paths: CabinPaths, caller: Caller, groups_fn=groups_of, tok
         return {"schema": SCHEMA, "ok": True, "cabin": ctl.resolve(args.cabin, args.forget_node)}
     if verb == "ls":
         return ctl.status()
+    if verb == "images":
+        from motel.tours import bake
+        _need_provider(ctl)
+        return {"schema": SCHEMA, "ok": True, "images": bake.user_images(ctl)}
     if verb == "checkin":
         ttl = parse_duration(args.ttl, what="--for") if args.ttl else None
         disk = parse_size_gb(args.disk) if args.disk else None
-        view = ctl.checkin(args.server_type, ttl, args.task, owner_label(caller), args.client_key, disk)
+        image = None
+        if args.image is not None:
+            # The user's text never reaches the cloud query: it selects one row of this host's recorded, labelled
+            # snapshots, and the controller is handed that row's numeric id.
+            from motel.tours import bake
+            _need_provider(ctl)
+            image = bake.resolve_image(ctl, args.image)["id"]
+        view = ctl.checkin(args.server_type, ttl, args.task, owner_label(caller), args.client_key, disk, image=image)
         return {"schema": SCHEMA, "ok": True, "cabin": view}
     if verb == "status":
         doc = ctl.status(args.cabin)
@@ -323,6 +340,11 @@ def execute(args, *, paths: CabinPaths, caller: Caller, groups_fn=groups_of, tok
     if verb == "checkout":
         return {"schema": SCHEMA, "ok": True, "cabin": ctl.checkout(args.cabin)}
     raise Usage(f"unknown verb {verb}")  # unreachable: argparse restricts verbs
+
+
+def _need_provider(ctl) -> None:
+    if ctl.hz is None:
+        raise Prerequisite("the cabin project token is not installed", "sudo motel-desk cabin doctor")
 
 
 def cabins_in_use(paths: CabinPaths) -> bool:

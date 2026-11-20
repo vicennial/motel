@@ -29,6 +29,13 @@ def wheel_layout(base: Path) -> Path:
     return site
 
 
+def without_images(rule: str) -> str:
+    """The rule as an installer wrote it before the `cabin images` verb existed."""
+    head, _, rest = rule.partition("NOPASSWD: ")
+    commands = [c for c in rest.rstrip("\n").split(", \\\n    ") if "cabin images" not in c]
+    return head + "NOPASSWD: " + ", \\\n    ".join(commands) + "\n"
+
+
 class SudoersTest(unittest.TestCase):
     def lines(self, text):
         return [c.strip(" \\\n") for c in text.split("NOPASSWD:")[1].split(",")]
@@ -42,7 +49,7 @@ class SudoersTest(unittest.TestCase):
         for verb in cabin_desk.USER_VERBS:
             self.assertIn(f"{desk} cabin {verb} *", commands)
         self.assertEqual(sorted(c for c in commands if " cabin " in c and not c.endswith("*")),
-                         sorted(f"{desk} cabin {v}" for v in ("ls", "doctor")))
+                         sorted(f"{desk} cabin {v}" for v in ("ls", "doctor", "images")))
 
     def test_operator_verbs_and_wildcards_are_absent(self):
         text = installer.render_sudoers(["alice"], cabins=True)
@@ -258,6 +265,18 @@ class CleanupSurvivesTest(unittest.TestCase):
         self.assertIn("motel-desk cabin checkout *", self.sudoers())
         self.assertNotIn("motel-desk cabin checkin", self.sudoers())
 
+    def test_upgrade_adds_the_images_line_to_a_rule_written_before_it_existed(self):
+        self.with_cabins()
+        path = self.prefix / "etc/sudoers.d/motel"
+        old = without_images(self.sudoers())
+        path.unlink()                                   # the installer writes it read-only (0440)
+        path.write_text(old)
+        self.assertNotIn("cabin images", self.sudoers())
+        code, _, err = self.run_install("--upgrade")
+        self.assertEqual(code, 0, err)
+        self.assertIn("motel-desk cabin images *", self.sudoers())
+        self.assertIn("motel-desk cabin images,", self.sudoers())
+
     def test_a_toml_typo_makes_every_reinstall_refuse_and_change_nothing(self):
         self.with_cabins()
         self.config.write_text(self.config.read_text() + "\n[rooms\n")
@@ -291,6 +310,27 @@ class CleanupSurvivesTest(unittest.TestCase):
         sudoers.write_text(installer.render_sudoers(users, cabins=installer.CABINS_OFF))
         checks = {c["check"]: c for c in __import__("json").loads(fx.desk("doctor", "--json")[1])["checks"]}
         self.assertFalse(checks["sudoers rule matches allow_users"]["ok"])
+
+
+class DoctorSeesAStaleImagesRuleTest(unittest.TestCase):
+    def test_a_rule_without_the_images_line_fails_the_check_and_names_the_fix(self):
+        from helpers import BASE_TOML, Fixture
+        fx = Fixture(toml=BASE_TOML + '\n[cabins]\nenabled = true\ntypes = ["cpx32"]\nmax_eur_per_hour = 0.2\n')
+        self.addCleanup(fx.close)
+        sudoers = Path(fx.paths.real("/etc/sudoers.d/motel"))
+        sudoers.parent.mkdir(parents=True)
+        users = list(fx.cfg.allow_users)
+        full = installer.render_sudoers(users, cabins=installer.CABINS_ON)
+        sudoers.write_text(full)
+
+        def check():
+            return {c["check"]: c for c in __import__("json").loads(fx.desk("doctor", "--json")[1])["checks"]}["sudoers rule matches allow_users"]
+        self.assertTrue(check()["ok"])
+        sudoers.write_text(without_images(full))
+        self.assertNotEqual(sudoers.read_text(), full)
+        row = check()
+        self.assertFalse(row["ok"])
+        self.assertIn("motel install", row["detail"])
 
 
 class SourceTrustTest(unittest.TestCase):

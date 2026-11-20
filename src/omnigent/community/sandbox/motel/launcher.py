@@ -57,6 +57,8 @@ Not under /tmp: tmpfiles aging (10 days on Ubuntu) would remove it while a cabin
 HOST_PATTERN = "^([^ ]*/python[0-9.]* )?([^ ]*/)?omnigent host( |$)"
 """The host's command line on a cabin: ``.../venv/bin/python3 .../omnigent host ...`` (a pip console script runs through
 its shebang). Anchored to the start, so a shell or editor that merely mentions 'omnigent host' is not matched."""
+MISSING_OMNIGENT = 3
+"""Exit status of the cabin-side probe when ``omnigent`` is not on the PATH (any other failure is a different problem)."""
 HARNESS_WARN_EVERY_S = 600.0
 _harness_seen: dict[str, float] = {}
 _harness_warned: set[str] = set()
@@ -201,9 +203,11 @@ class MotelSandboxLauncher(ExecModelHostLauncher):
         """Check a cabin in and wait until it accepts commands. The cabin id is the sandbox id."""
         self._resolve_env()  # fail before a cabin exists (and bills) if a named variable is unset
         task = task_name(name, self.config.task)
-        click.echo(f"▸ Checking in a motel cabin for '{name}' (ttl {self.config.ttl})")
+        from_image = f", image {self.config.image}" if self.config.image else ""
+        click.echo(f"▸ Checking in a motel cabin for '{name}' (ttl {self.config.ttl}{from_image})")
         try:
-            cabin = self._motel.cabin_checkin(self.config.server_type, self.config.ttl, task, self.config.disk_gb)
+            cabin = self._motel.cabin_checkin(self.config.server_type, self.config.ttl, task, self.config.disk_gb,
+                                              image=self.config.image)
         except (Timeout, BadReply) as exc:
             # The cabin may exist although the answer was lost. The task label is unique to this call.
             self._reclaim(task)
@@ -215,6 +219,7 @@ class MotelSandboxLauncher(ExecModelHostLauncher):
         click.echo(f"  → cabin {cabin.id} ({cabin.server_type or 'default type'}{price}), expires {cabin.expires}")
         try:
             self._wait_for_ssh(cabin.id)
+            self._require_omnigent(cabin.id)
         except BaseException:
             self._checkout_quietly(cabin.id)
             raise
@@ -424,6 +429,23 @@ class MotelSandboxLauncher(ExecModelHostLauncher):
             last = result.stderr.strip()[-200:]
             self._sleep(delay)
         raise MotelSandboxError(f"cabin {cabin} did not accept commands: {last or 'no answer'}")
+
+    def _require_omnigent(self, cabin: str) -> None:
+        """With ``bootstrap: none`` nothing installs omnigent, so say at once, before a host start, when it is missing."""
+        if self.config.bootstrap != "none":
+            return
+        result = self._exec(cabin, f'{tp.PRELUDE}\ncommand -v omnigent >/dev/null 2>&1 || exit {MISSING_OMNIGENT}\n', 60, quiet=True)
+        if result.returncode == 0:
+            return
+        if result.returncode != MISSING_OMNIGENT:
+            raise MotelSandboxError(f"could not check whether omnigent is on cabin {cabin} (exit {result.returncode}): "
+                                    f"{result.stderr.strip()[-300:] or 'no answer'}")
+        image = self.config.image
+        raise MotelSandboxError(
+            f"omnigent is not on the PATH of cabin {cabin}, and bootstrap is 'none', so nothing installs it. "
+            + (f"The image '{image}' was baked without omnigent: bake it again with `motel omnigent bake-script`, or set "
+               "bootstrap: pip to install omnigent at launch." if image else
+               "Start from an image that has it (sandbox.motel.image) or set bootstrap: pip."))
 
     def _checkout_quietly(self, cabin: str) -> None:
         try:

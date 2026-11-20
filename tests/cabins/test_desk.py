@@ -320,7 +320,7 @@ def test_root_helper_reads_only_root_owned_files_in_strict_mode(tmp_path, monkey
 
 
 def test_sudoers_verbs_are_the_user_verbs_only():
-    assert desk.USER_VERBS == ("checkin", "ls", "status", "extend", "checkout", "doctor")
+    assert desk.USER_VERBS == ("checkin", "ls", "status", "extend", "checkout", "doctor", "images")
     assert not set(desk.USER_VERBS) & set(desk.OPERATOR_VERBS)
     assert HOST and HOST_IPV4 and HZ_TOKEN_HASH
 

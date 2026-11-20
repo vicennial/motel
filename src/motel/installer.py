@@ -30,7 +30,7 @@ CLI = "/usr/local/bin/motel"
 USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "restore", "doctor")
 # Cabin verbs an ordinary user may run, pinned one per sudoers line (tests check this equals motel.cabins.desk.USER_VERBS).
 # `setup`, `reap` and `resolve` are operator verbs: root only.
-CABIN_USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "doctor")
+CABIN_USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "doctor", "images")
 # Tour verbs an ordinary user may run (tests check this equals motel.tours.desk.USER_VERBS). `supervise`, `reap`, `bake`,
 # `image` and `own-login` are operator verbs: root only.
 TOUR_USER_VERBS = ("start", "ls", "status", "wait", "result", "fetch", "logs", "cancel")

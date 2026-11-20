@@ -246,6 +246,29 @@ class CabinTest(SdkTest):
         self.assertEqual((cabin.id, cabin.server_type, cabin.hourly_eur, cabin.address), ("swift-gull-0123456789ab", "cpx32", Decimal("0.0200"), "192.0.2.10"))
         self.assertEqual(cabin.warnings, ["be careful"])
 
+    def test_checkin_with_a_baked_image_passes_it_and_reads_its_name_back(self):
+        baked = {**CABIN, "offer": {**CABIN["offer"], "image_name": "omnigent", "image_type": "snapshot"}}
+        self.rule("cabin", "checkin", stdout=json.dumps(baked))
+        cabin = self.motel.cabin_checkin(image="omnigent")
+        self.assertEqual(self.calls(), [["cabin", "checkin", "--image", "omnigent", "--json"]])
+        self.assertEqual(cabin.image, "omnigent")
+
+    def test_a_stock_cabin_has_no_image_name(self):
+        self.rule("cabin", "checkin", stdout=json.dumps(CABIN))
+        self.assertIsNone(self.motel.cabin_checkin().image)
+
+    def test_a_bad_image_never_reaches_the_cli(self):
+        for bad in ("Omni gent", "--keep", "ubuntu-24.04", "", "a" * 41):
+            with self.assertRaises(UsageError):
+                self.motel.cabin_checkin(image=bad)
+        self.assertEqual(self.calls(), [])
+
+    def test_cabin_images_lists_what_the_host_offers(self):
+        rows = [{"id": 4711, "name": "omnigent", "created": "2026-11-08T12:30:00Z", "image_size_gb": 1.5, "disk_size_gb": 40}]
+        self.rule("cabin", "images", **ok(images=rows))
+        self.assertEqual(self.motel.cabin_images(), rows)
+        self.assertEqual(self.calls(), [["cabin", "images", "--json"]])
+
     def test_context_manager_deletes_the_cabin(self):
         self.rule("cabin", "checkin", stdout=json.dumps(CABIN))
         self.rule("cabin", "checkout", **ok(cabin={**CABIN, "state": "released"}))

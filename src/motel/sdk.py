@@ -61,6 +61,7 @@ DURATION_RE = re.compile(r"[1-9][0-9]{0,3}[mhd]")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{2,79}")
 TASK_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 TYPE_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+IMAGE_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?")
 TOUR_ID_RE = re.compile(r"t-[0-9a-f]{10}")
 GUEST_ID_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?")
 TOUR_DONE = ("done", "failed", "timed_out", "over_budget", "cancelled")
@@ -286,6 +287,8 @@ class Cabin:
     hourly_eur: Decimal | None = None
     cost_estimate_eur: Decimal | None = None
     disk_gb: int | None = None
+    image: str | None = None
+    """The name of the baked image the cabin started from; ``None`` for the stock image."""
     warnings: list[str] = field(default_factory=list)
     raw: dict = field(default_factory=dict, repr=False, compare=False)
     _client: Motel | None = field(default=None, repr=False, compare=False)
@@ -304,7 +307,9 @@ class Cabin:
             time_left_s=data.get("time_left_s"), address=data.get("address"),
             server_type=offer.get("server_type"), location=offer.get("location"),
             hourly_eur=_decimal(offer.get("total_hourly_net_eur")), cost_estimate_eur=_decimal(data.get("cost_estimate_net_eur")),
-            disk_gb=disk.get("size_gb"), warnings=list(data.get("warnings") or []), raw=dict(data), _client=client)
+            disk_gb=disk.get("size_gb"),
+            image=offer.get("image_name") if offer.get("image_type") == "snapshot" else None,
+            warnings=list(data.get("warnings") or []), raw=dict(data), _client=client)
 
     def run(self, command: Sequence[str] | str, *, check: bool = False, timeout: float | None = None) -> CabinRun:
         """Run a command in this cabin over SSH (``motel cabin ssh ID -- CMD``). No files are synced."""
@@ -326,7 +331,7 @@ class Cabin:
 
     def _update(self, other: Cabin) -> Cabin:
         for name in ("id", "name", "state", "task", "owner", "created", "expires", "time_left_s", "address", "server_type",
-                     "location", "hourly_eur", "cost_estimate_eur", "disk_gb", "warnings", "raw"):
+                     "location", "hourly_eur", "cost_estimate_eur", "disk_gb", "image", "warnings", "raw"):
             setattr(self, name, getattr(other, name))
         return self
 
@@ -391,6 +396,13 @@ def _ident(value: str, what: str) -> str:
 def _pattern(value: str, regex: re.Pattern, what: str, example: str) -> str:
     if not isinstance(value, str) or not regex.fullmatch(value):
         raise UsageError(f"invalid {what} {value!r}: use lowercase a-z, 0-9 and '-' (for example {example})", "motel --help")
+    return value
+
+
+def _image(value: str) -> str:
+    if not isinstance(value, str) or not (value.isdigit() or IMAGE_RE.fullmatch(value)) or not value.isascii():
+        raise UsageError(f"invalid image {value!r}: a baked image's name (lowercase a-z, 0-9 and '-') or its numeric id",
+                         "motel cabin images")
     return value
 
 
@@ -744,7 +756,9 @@ class Motel:
 
     # -- cabins (experimental)
     def cabin_checkin(self, server_type: str | None = None, ttl: str | None = None, task: str | None = None,
-                      disk_gb: int | str | None = None) -> Cabin:
+                      disk_gb: int | str | None = None, image: str | None = None) -> Cabin:
+        """Check a cabin in. ``image`` is the name (or numeric id) of an image the operator baked on this host
+        (``motel cabin images``); the desk refuses anything else. Left out, the cabin starts from the stock image."""
         args = ["cabin", "checkin"]
         if server_type:
             args += ["--type", _pattern(server_type, TYPE_RE, "server type", "cpx52")]
@@ -754,17 +768,19 @@ class Motel:
             args += ["--task", _pattern(task, TASK_RE, "task", "test-suite")]
         if disk_gb:
             args += ["--disk", _size(disk_gb)]
+        if image is not None:
+            args += ["--image", _image(image)]
         return self._cabin(self._json(args, self.cabin_timeout))
 
     @contextlib.contextmanager
     def cabin(self, server_type: str | None = None, ttl: str | None = None, task: str | None = None,
-              disk_gb: int | str | None = None, *, keep: bool = False) -> Iterator[Cabin]:
+              disk_gb: int | str | None = None, *, keep: bool = False, image: str | None = None) -> Iterator[Cabin]:
         """Check in a cabin, yield it, and delete it when the block ends (unless ``keep=True``). Deletion is final.
 
         A cabin left in ``cleanup_pending`` keeps billing: the checkout then raises :class:`InventoryIncomplete`
         (or warns, when the block itself failed).
         """
-        cabin = self.cabin_checkin(server_type, ttl, task, disk_gb)
+        cabin = self.cabin_checkin(server_type, ttl, task, disk_gb, image=image)
         try:
             yield cabin
         except BaseException:
@@ -777,6 +793,10 @@ class Motel:
         else:
             if not keep:
                 cabin.checkout()
+
+    def cabin_images(self) -> list[dict]:
+        """The baked images this host offers (``motel cabin images``): ``[{id, name, created, image_size_gb, disk_size_gb}]``."""
+        return list(self._json(["cabin", "images"]).get("images") or [])
 
     def cabins(self, *, strict: bool = False) -> list[Cabin]:
         """Your cabins. Exit 9 (provider inventory incomplete) still returns the local records unless ``strict``."""
@@ -808,7 +828,7 @@ class Motel:
 
     def cabin_run(self, command: Sequence[str] | str, *, sync: str | None = None, server_type: str | None = None,
                   ttl: str | None = None, task: str | None = None, disk_gb: int | str | None = None, keep: bool = False,
-                  check: bool = False, timeout: float | None = None) -> CabinRun:
+                  check: bool = False, timeout: float | None = None, image: str | None = None) -> CabinRun:
         """One shot: check in a cabin, sync a git checkout to it, run ``command`` there, check out.
 
         ``sync`` is the git worktree to copy (default: the current directory). The CLI copies tracked files plus
@@ -826,6 +846,8 @@ class Motel:
             args += ["--task", _pattern(task, TASK_RE, "task", "test-suite")]
         if disk_gb:
             args += ["--disk", _size(disk_gb)]
+        if image is not None:
+            args += ["--image", _image(image)]
         if keep:
             args.append("--keep")
         proc = self._spawn([*args, "--", *_command(command)], self.cabin_timeout if timeout is None else timeout, cwd=sync)
@@ -918,8 +940,9 @@ class AsyncMotel:
 
     @contextlib.asynccontextmanager
     async def cabin(self, server_type: str | None = None, ttl: str | None = None, task: str | None = None,
-                    disk_gb: int | str | None = None, *, keep: bool = False) -> AsyncIterator[Cabin]:
-        cabin = await self.cabin_checkin(server_type, ttl, task, disk_gb)
+                    disk_gb: int | str | None = None, *, keep: bool = False,
+                    image: str | None = None) -> AsyncIterator[Cabin]:
+        cabin = await self.cabin_checkin(server_type, ttl, task, disk_gb, image=image)
         try:
             yield cabin
         except BaseException:
@@ -959,6 +982,9 @@ class AsyncMotel:
 
     async def cabin_checkin(self, *a, **k) -> Cabin:
         return await self._to(self.sync.cabin_checkin, *a, **k)
+
+    async def cabin_images(self) -> list[dict]:
+        return await self._to(self.sync.cabin_images)
 
     async def cabins(self, *a, **k) -> list[Cabin]:
         return await self._to(self.sync.cabins, *a, **k)

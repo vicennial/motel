@@ -63,6 +63,21 @@ def default_cabin_doctor() -> tuple[int, dict]:
         return exc.code, {"ok": False, "error": exc.message, "hint": exc.hint}
 
 
+def default_cabin_images() -> tuple[int, dict]:
+    """What ``motel cabin images`` asks the front desk: the baked images this host offers. Read-only."""
+    from motel.cabins.cli import DESK, Cli
+    from motel.cabins.errors import Fail
+
+    def quiet(argv, **kw):
+        return subprocess.run(argv, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, **kw)
+
+    cli = Cli(runner=quiet, desk_exists=lambda: os.path.exists(DESK), out=io.StringIO(), err=io.StringIO())
+    try:
+        return cli.desk_call(["images"])
+    except Fail as exc:
+        return exc.code, {"ok": False, "error": exc.message, "hint": exc.hint}
+
+
 def scan_servers(uid: int | None = None, proc_root: str = "/proc") -> list[dict]:
     """Running ``omnigent server`` processes of this user (Linux ``/proc``; an empty list elsewhere).
 
@@ -130,6 +145,7 @@ class Deps:
     home: str = field(default_factory=lambda: os.path.expanduser("~"))
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     cabin_doctor: Callable[[], tuple[int, dict]] = default_cabin_doctor
+    cabin_images: Callable[[], tuple[int, dict]] = default_cabin_images
     servers: Callable[[], list[dict]] = scan_servers
     motel_spec: Callable[[], str] = lambda: motel_requirement()
 
@@ -155,6 +171,29 @@ def check_cabins(deps: Deps) -> Check:
     error = str(doc.get("error") or f"cabin doctor gave no answer (exit {rc})")
     not_set_up = rc == 8 or "not installed" in error
     return Check(False, error, FIRST_CABIN_HINT if not_set_up else str(doc.get("hint") or "motel cabin doctor"), 8 if not_set_up else 5)
+
+
+def check_image(deps: Deps, name: str) -> Check:
+    """Does a baked image called ``name`` exist on this host (``motel cabin images``)? Creates nothing."""
+    try:
+        rc, doc = deps.cabin_images()
+    except Exception as exc:
+        return Check(False, f"the image list could not be read ({type(exc).__name__}: {exc})", "motel cabin images", 5)
+    doc = doc if isinstance(doc, dict) else {}
+    rows = doc.get("images")
+    if not isinstance(rows, list):
+        error = str(doc.get("error") or f"the front desk gave no answer (exit {rc})")
+        return Check(False, f"cannot list the baked images: {error}", str(doc.get("hint") or "motel cabin images"), 5)
+    named = [r for r in rows if isinstance(r, dict) and r.get("name") == name]
+    if not named:
+        return Check(False, f"no baked image named {name} on this host (it offers: "
+                            f"{', '.join(sorted(str(r.get('name')) for r in rows if isinstance(r, dict))) or 'none'})",
+                     "motel omnigent bake-script > setup.sh && sudo motel-desk tour bake " + name + " --script setup.sh", 8)
+    if len(named) > 1:
+        ids = ", ".join(str(r.get("id")) for r in named)
+        return Check(False, f"more than one baked image is named {name} (ids {ids}), so the desk refuses the name",
+                     "sudo motel-desk tour image rm ID", 8)
+    return Check(True, f"baked image {name} exists (id {named[0].get('id')}, created {named[0].get('created')})")
 
 
 # -- Omnigent -------------------------------------------------------------------------------------------------------

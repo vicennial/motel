@@ -58,7 +58,7 @@ def cabin_receipt(view: dict, now=None) -> dict | None:
             wall = None
     released = view.get("state") == "released"
     hours = billing.get("billed_hours")
-    return {
+    receipt = {
         "server_type": offer.get("server_type"), "vcpus": offer.get("vcpus"), "memory_gb": offer.get("memory_gb"),
         "location": offer.get("location"), "disk_gb": (view.get("disk") or {}).get("size_gb"),
         "wall_seconds": wall, "billed_hours": hours, "basis": BASIS_STARTED if hours is not None else BASIS_PRORATED,
@@ -66,6 +66,9 @@ def cabin_receipt(view: dict, now=None) -> dict | None:
         "estimated_total_net_eur": _money(view.get("cost_estimate_net_eur")) if view.get("cost_estimate_net_eur") is not None else None,
         "currency": "EUR", "final": released, "servers_left": 0 if released else 1,
     }
+    if offer.get("image_type") == "snapshot" and offer.get("image_name"):
+        receipt["image"] = offer["image_name"]          # only a baked image is named; the stock image is the default
+    return receipt
 
 
 def _wall(seconds) -> str:
@@ -106,7 +109,8 @@ def render_cabin_receipt(r: dict, name: str | None = None) -> list:
         billed = "by the time used (this provider does not round up to the hour)"
     total = "unknown" if r.get("estimated_total_net_eur") is None else f"EUR {r['estimated_total_net_eur']} net"
     left = "0" if r.get("servers_left") == 0 else f"{r.get('servers_left', 1)} (checkout is not confirmed: it may still be billing)"
-    rows = [("server", _spec(r)), ("wall time", _wall(r.get("wall_seconds"))), ("billed", billed), ("price", price),
+    rows = [("server", _spec(r))] + ([("image", r["image"])] if r.get("image") else [])
+    rows += [("wall time", _wall(r.get("wall_seconds"))), ("billed", billed), ("price", price),
             ("est. total", total), ("servers left", left)]
     head = (f"receipt for cabin {name}" if name else "receipt") + (" (released)" if r.get("final") else "")
     return [f"motel: {head}"] + [f"  {label.ljust(LABEL)}{value}" for label, value in rows]

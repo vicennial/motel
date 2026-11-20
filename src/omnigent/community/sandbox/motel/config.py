@@ -23,6 +23,7 @@ VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)*([a-z]+[0-9]*|\.?(dev|post|rc)[0-9]+
 NPM_SPEC_RE = re.compile(r"^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*(@[A-Za-z0-9][A-Za-z0-9._-]*)?$")
 DURATION_RE = re.compile(r"^[1-9][0-9]{0,3}[mhd]$")
 TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+IMAGE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
 TASK_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")
 
 def release_version(version: str) -> bool:
@@ -81,6 +82,10 @@ class MotelSandboxConfig(BaseModel):
     """How a cabin reaches a ``server_url`` on the controller's loopback. ``auto`` and ``relay`` carry the
     connection over the ssh session's stdio. ``reverse-forward`` uses ``ssh -R`` and needs a cabin whose sshd
     allows it (the stock cabin does not). ``none`` never tunnels (use a public ``server_url``)."""
+    image: str | None = None
+    """Name of an image the operator baked on this host (``motel cabin images`` lists them). Cabins start from it
+    instead of the stock image. It does not choose ``bootstrap``: say ``bootstrap: none`` when the image already has
+    omnigent."""
     bootstrap: Literal["pip", "none"] = "pip"
     """``pip`` installs a pinned omnigent into a venv on the cabin when it is missing. ``none`` expects omnigent
     already on the cabin's PATH."""
@@ -119,6 +124,14 @@ class MotelSandboxConfig(BaseModel):
     def _type(cls, value):
         if value is not None and not TYPE_RE.fullmatch(value):
             raise ValueError(f"server_type {value!r} is not a valid cabin type name")
+        return value
+
+    @field_validator("image")
+    @classmethod
+    def _image(cls, value):
+        if value is not None and (not IMAGE_RE.fullmatch(value) or value.isdigit()):
+            raise ValueError(f"image {value!r} is not a baked image name: use 1-40 lowercase letters, digits and hyphens "
+                             "(see `motel cabin images`)")
         return value
 
     @field_validator("task")

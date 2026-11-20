@@ -509,6 +509,199 @@ class StatusTest(Case):
         self.assertIn(FIRST_CABIN, out)
 
 
+IMAGES_OK = (0, {"schema": "motel/v1", "ok": True, "images": [
+    {"id": 4711, "name": "omnigent", "created": "2026-11-08T12:30:00Z", "image_size_gb": 1.5, "disk_size_gb": 40}]})
+IMAGE_LINES = "    image: omnigent\n    bootstrap: none\n"
+
+
+class ImageTest(Case):
+    def deps_with(self, images):
+        deps = self.m.deps()
+        deps.cabin_images = lambda: images
+        return deps
+
+    def status(self, images=IMAGES_OK, *args):
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.main(["status", "--config", str(self.config), "--json", *args], deps=self.deps_with(images), out=out, err=err)
+        return code, json.loads(out.getvalue())
+
+    def test_setup_image_writes_the_image_and_bootstrap_none_into_the_motel_block(self):
+        code, _out, _err = self.setup("--image", "omnigent")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.config.read_text().split("\n", 1)[1],
+                         "sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n" + IMAGE_LINES)
+
+    def test_a_second_run_changes_nothing(self):
+        self.setup("--image", "omnigent")
+        before = self.config.read_text()
+        code, out, _err = self.setup("--image", "omnigent")
+        self.assertEqual(code, 0)
+        self.assertIn("unchanged", out)
+        self.assertEqual(self.config.read_text(), before)
+        self.assertEqual(self.backups(), [])
+
+    def test_it_updates_an_existing_block_in_place_and_keeps_its_other_keys_and_comments(self):
+        self.m.provider = True
+        self.config.write_text("sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n"
+                               "    ttl: 2h   # keep\n    bootstrap: pip\n")
+        code, _out, _err = self.setup("--image", "omnigent")
+        self.assertEqual(code, 0)
+        text = self.config.read_text()
+        self.assertIn("    ttl: 2h   # keep\n", text)
+        self.assertIn("    bootstrap: none\n", text)
+        self.assertNotIn("bootstrap: pip", text)
+        self.assertEqual(text.count("image: omnigent"), 1)
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_it_never_writes_an_image_unless_asked(self):
+        self.setup()
+        self.assertNotIn("image", self.config.read_text())
+        self.assertNotIn("bootstrap", self.config.read_text())
+
+    def test_a_bad_image_name_is_refused_before_anything_runs(self):
+        for bad in ("Omni gent", "../x", "ubuntu-24.04", "12345", "x" * 41, "-x"):
+            err = io.StringIO()
+            code = cli.main(["setup", "--image", bad, "--dry-run"], deps=Deps(), out=io.StringIO(), err=err)
+            self.assertEqual(code, 2, bad)
+            self.assertIn("Try:", err.getvalue())
+
+    def test_status_reports_that_the_configured_image_exists(self):
+        self.setup("--image", "omnigent")
+        code, doc = self.status()
+        by = {c["check"]: c for c in doc["checks"]}
+        self.assertEqual(code, 0)
+        self.assertTrue(by["baked image"]["ok"] and "id 4711" in by["baked image"]["detail"])
+        self.assertNotIn("bootstrap", by)
+        self.assertEqual(doc["image"], {"name": "omnigent", "bootstrap": "none", "exists": True})
+
+    def test_status_fails_and_says_what_to_run_when_the_image_is_not_on_this_host(self):
+        self.setup("--image", "omnigent")
+        code, doc = self.status((0, {"ok": True, "images": [{"id": 9, "name": "builder"}]}))
+        row = {c["check"]: c for c in doc["checks"]}["baked image"]
+        self.assertEqual((code, doc["ok"], row["ok"]), (8, False, False))
+        self.assertIn("no baked image named omnigent", row["detail"])
+        self.assertIn("it offers: builder", row["detail"])
+        self.assertIn("motel omnigent bake-script", row["detail"])
+        self.assertEqual(doc["image"]["exists"], False)
+
+    def test_status_says_when_the_desk_cannot_list_images(self):
+        self.setup("--image", "omnigent")
+        code, doc = self.status((2, {"ok": False, "error": "the installed front desk is older", "hint": "sudo motel install --upgrade"}))
+        row = {c["check"]: c for c in doc["checks"]}["baked image"]
+        self.assertEqual(code, 8)
+        self.assertIn("cannot list the baked images: the installed front desk is older", row["detail"])
+
+    def test_status_names_the_ambiguity_when_two_images_share_the_name(self):
+        self.setup("--image", "omnigent")
+        rows = [{"id": 1, "name": "omnigent"}, {"id": 2, "name": "omnigent"}]
+        code, doc = self.status((0, {"ok": True, "images": rows}))
+        self.assertEqual(code, 8)
+        self.assertIn("more than one baked image is named omnigent (ids 1, 2)", {c["check"]: c for c in doc["checks"]}["baked image"]["detail"])
+
+    def test_status_notes_an_image_without_bootstrap_none_and_asks_the_desk_nothing_without_an_image(self):
+        self.m.provider = True
+        self.config.write_text("sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n  motel:\n    image: omnigent\n")
+        _code, doc = self.status()
+        by = {c["check"]: c for c in doc["checks"]}
+        self.assertEqual(by["bootstrap"]["level"], "info")
+        calls = []
+        deps = self.m.deps()
+        deps.cabin_images = lambda: calls.append(1) or IMAGES_OK
+        self.config.write_text("sandbox:\n  provider: motel\n  server_url: http://127.0.0.1:6767\n")
+        cli.main(["status", "--config", str(self.config), "--json"], deps=deps, out=io.StringIO(), err=io.StringIO())
+        self.assertEqual(calls, [])
+
+    def test_status_is_still_read_only_with_an_image(self):
+        self.setup("--image", "omnigent")
+        text = self.config.read_text()
+        installs = len(self.m.installs)
+        self.status()
+        self.assertEqual((self.config.read_text(), len(self.m.installs)), (text, installs))
+
+
+class BakeScriptTest(Case):
+    def script(self, *args, environ=None, machine=None):
+        machine = machine or self.m
+        deps = machine.deps()
+        deps.environ = environ or {}
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.main(["bake-script", *args], deps=deps, out=out, err=err)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_it_prints_a_script_that_pins_the_version_given(self):
+        code, out, err = self.script("--omnigent-version", "0.22.1")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("#!/bin/bash\n"))
+        self.assertIn("OMNIGENT_VERSION=0.22.1\n", out)
+        self.assertIn('"omnigent==$OMNIGENT_VERSION"', out)
+        self.assertIn("sudo motel-desk tour bake omnigent --script setup.sh", err)
+
+    def test_the_output_is_stable(self):
+        first = self.script("--omnigent-version", "0.22.1")[1]
+        self.assertEqual(first, self.script("--omnigent-version", "0.22.1")[1])
+        self.assertNotEqual(first, self.script("--omnigent-version", "0.22.2")[1])
+
+    def test_the_version_comes_from_the_flag_then_the_environment_then_the_omnigent_installed_here(self):
+        self.assertIn("OMNIGENT_VERSION=0.30.0\n", self.script("--omnigent-version", "0.30.0", environ={"OMNIGENT_VERSION": "0.29.0"})[1])
+        self.assertIn("OMNIGENT_VERSION=0.29.0\n", self.script(environ={"OMNIGENT_VERSION": "0.29.0"})[1])
+        self.assertIn("OMNIGENT_VERSION=0.21.0\n", self.script()[1])                    # the fake machine has 0.21.0
+
+    def test_without_a_version_and_without_omnigent_here_it_asks_for_one(self):
+        self.m.present = False
+        code, out, err = self.script()
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("--omnigent-version", err)
+
+    def test_a_version_that_is_not_a_release_is_refused(self):
+        for bad in ("latest", "1.0.0.dev3", "0.21.0; rm -rf /", "$(id)", "0.21.0 --pre", ""):
+            code, out, err = self.script("--omnigent-version", bad)
+            self.assertEqual((code, out), (2, ""), bad)
+            self.assertIn("Try:", err)
+
+    def test_the_default_installs_the_harness_clis_and_the_flags_change_them(self):
+        default = self.script("--omnigent-version", "0.21.0")[1]
+        self.assertIn("apt-get install -y -q git tmux curl ca-certificates python3-venv python3-pip python3-yaml nodejs npm", default)
+        self.assertIn("npm install -g --prefix /usr/local --no-audit --no-fund --loglevel=error @anthropic-ai/claude-code @openai/codex", default)
+        custom = self.script("--omnigent-version", "0.21.0", "--harness-package", "@openai/codex@1.2.3")[1]
+        self.assertIn("--loglevel=error @openai/codex@1.2.3\n", custom)
+        self.assertNotIn("claude-code", custom)
+        none = self.script("--omnigent-version", "0.21.0", "--no-harness")[1]
+        self.assertNotIn("npm install", none)
+        self.assertNotIn("nodejs", none)
+        self.assertIn("python3-yaml\n", none)
+
+    def test_a_bad_package_spec_or_conflicting_flags_are_refused(self):
+        for args in (("--harness-package", "x; id"), ("--harness-package", "$(id)"), ("--no-harness", "--harness-package", "x")):
+            code, out, _err = self.script("--omnigent-version", "0.21.0", *args)
+            self.assertEqual((code, out), (2, ""), args)
+
+    def test_the_script_is_root_only_work_on_the_cabin_and_changes_nothing_here(self):
+        _code, out, _err = self.script("--omnigent-version", "0.21.0")
+        self.assertEqual(self.m.installs, [])
+        self.assertIn("set -euo pipefail", out)
+        self.assertIn("export HOME=/root", out)
+        self.assertIn('ln -sf "$VENV/bin/omnigent" "$LINK"', out)
+        self.assertIn("LINK=/usr/local/bin/omnigent", out)
+        self.assertIn("--no-cache-dir", out)
+        self.assertIn("rm -rf /root/.npm /root/.cache /root/.npmrc", out)
+        for forbidden in ("curl |", "| sh", "| bash", "sk-", "token", "login", "apikey", "API_KEY"):
+            self.assertNotIn(forbidden, out)
+
+    @unittest.skipUnless(os.path.exists("/bin/bash") or os.path.exists("/usr/bin/bash"), "bash not installed")
+    def test_bash_accepts_the_syntax(self):
+        import subprocess
+        _code, out, _err = self.script("--omnigent-version", "0.21.0")
+        proc = subprocess.run(["bash", "-n"], input=out, capture_output=True, text=True)
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+
+    def test_the_help_lists_the_three_commands(self):
+        out = io.StringIO()
+        cli.main([], out=out, err=io.StringIO())
+        text = out.getvalue()
+        self.assertIn("motel omnigent bake-script > setup.sh && sudo motel-desk tour bake omnigent --script setup.sh", text)
+        self.assertIn("motel omnigent setup --image omnigent", text)
+
+
 class McpConfigTest(Case):
     def test_it_prints_a_json_snippet_for_motel_mcp_with_tours_and_nothing_else(self):
         code, out, err = self.go("mcp-config")

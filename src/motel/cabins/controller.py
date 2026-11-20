@@ -313,7 +313,8 @@ class Controller:
                 or not is_pos_int(img.get("id"))):
             raise PolicyRefused("the configured image is not current")
         hours = decimal.Decimal(int(ttl.total_seconds())) / 3600
-        return {"server_type": server_type, "location": loc, "image_id": img["id"], "image_name": img.get("name"),
+        return {"server_type": server_type, "location": loc, "image_id": img["id"], "image_type": img.get("type"),
+                "image_name": (img.get("labels") or {}).get("image-name") or img.get("name"),
                 "vcpus": st.get("cores") if is_pos_int(st.get("cores")) else None,
                 "memory_gb": st.get("memory") if isinstance(st.get("memory"), (int, float)) and st["memory"] > 0 else None,
                 "server_hourly_net_eur": money(server_net), "ipv4_hourly_net_eur": money(ip_net),
