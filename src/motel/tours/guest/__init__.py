@@ -13,7 +13,7 @@ Engine entry points:
 Constants the engine shares with the runner, so the two cannot drift: ``LOG_CAP_BYTES`` (bytes kept per output stream
 = the most the engine fetches), ``RESERVED_ENV_NAMES`` / ``RESERVED_ENV_PREFIXES`` / :func:`env_name_reserved` (card
 env names nobody may set), ``DEFAULT_MAX_OUTPUT_TOKENS`` / ``MIN_OUTPUT_TOKENS`` / ``MAX_OUTPUT_TOKENS_LIMIT`` (card field
-``max_output_tokens``), and ``MAX_EGRESS_HOSTS`` / ``MAX_EGRESS_BYTES`` / ``EGRESS_HOST_OVERHEAD`` / :func:`egress_cost` (the
+``max_output_tokens``), ``MODEL_RE`` / ``MODEL_MAX`` (card field ``model``), and ``MAX_EGRESS_HOSTS`` / ``MAX_EGRESS_BYTES`` / ``EGRESS_HOST_OVERHEAD`` / :func:`egress_cost` (the
 egress host budget: ``sum(len(h) + EGRESS_HOST_OVERHEAD) <= MAX_EGRESS_BYTES``, own-login's api.anthropic.com included).
 """
 
@@ -26,6 +26,8 @@ from motel.tours.guest.adapters import (
     LOG_CAP_BYTES,
     MAX_OUTPUT_TOKENS_LIMIT,
     MIN_OUTPUT_TOKENS,
+    MODEL_MAX,  # noqa: F401  (re-exported for the spec and the tests)
+    MODEL_RE,  # noqa: F401
     RESERVED_ENV_NAMES,
     RESERVED_ENV_PREFIXES,
     env_name_reserved,

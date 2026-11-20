@@ -22,7 +22,7 @@ A tour guest is one bounded, non-interactive job on a fresh cabin. The guest par
 Inputs are in `/var/lib/motel-guest/in/` (root-owned, group `guest`, mode 0750): `card.json`, `input.bundle`, and an
 optional `overlay.patch`. The runner:
 
-1. validates the card (strict types, ids, sizes, reserved environment names, `max_output_tokens`);
+1. validates the card (strict types, ids, sizes, reserved environment names, `max_output_tokens`, `model`);
 2. unbundles the input into `~/work`, checks out `base` on `branch`, applies the overlay **as its own commit**
    (`overlay_commit` in `run.json`, so the engine can tell the overlay from the agent's work);
 3. writes the agent's config files into the fixed HOME;
@@ -159,6 +159,10 @@ CLIs' own `--help` output and the option and setting names in the shipped binari
   for 128000 output tokens on Opus 5.5 and the concierge reserves the price of that for one request (about 2.56 USD),
   which is over a 2 USD guest budget. The card field `max_output_tokens` (integer, 256 to 128000, default 8000)
   sets it. Neither variable is set in own-login mode, which has no concierge.
+* The optional card field `model` (a string of at most 64 characters matching `[A-Za-z0-9][A-Za-z0-9._:\[\]-]*`, so it
+  never starts with `-`) is one argv element after `--model`, for both the `claude` and the `codex` adapter, in both auth
+  modes. The runner checks it again and refuses the card for the `command` adapter. Without it, the argv is unchanged.
+  Checked with `claude --help` and `codex exec --help` on 2026-11-15: both list `--model`; codex also lists `-m`.
 * Optional hardening, not enabled: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` is meant to make Claude Code scrub credentials
   from the environment of the processes it starts. It needs bubblewrap in the image, so it cannot be a default (this
   was not tested here, and the variable name comes from the review, not from a source this part checked). A card cannot

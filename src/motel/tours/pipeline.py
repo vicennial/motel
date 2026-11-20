@@ -414,7 +414,8 @@ class AttemptRunner:
                 "ttl_s": g["ttl_s"], "max_turns": g["max_turns"], "artifacts": g["artifacts"],
                 "max_result_mb": self.env.limits.max_result_mb} | (
             {} if g["auth"] == "own-login" else {"concierge_port": self.env.limits.concierge_port}) | (
-            {} if g.get("max_output_tokens") is None else {"max_output_tokens": g["max_output_tokens"]})
+            {} if g.get("max_output_tokens") is None else {"max_output_tokens": g["max_output_tokens"]}) | (
+            {} if g.get("model") is None else {"model": g["model"]})
 
     def _phase_copy(self, ctx: Ctx) -> None:
         env, store, tid = self.env, self.store, ctx.tour["id"]
@@ -851,6 +852,7 @@ class AttemptRunner:
             "schema": RESULT_SCHEMA, "tour": tid, "guest": g["id"], "attempt": ctx.rec["id"], "status": status,
             "cleanup": clean, "auth": g["auth"], "branch": f"motel/{tid}/{g['id']}", "base": g["base"],
             "partial": ctx.partial, "error": ctx.error, "reason": ctx.reason,
+            **({} if g.get("model") is None else {"model": g["model"]}),
             # What the controller measured or saved itself.
             "verified": {
                 "duration_s": duration,

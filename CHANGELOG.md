@@ -6,6 +6,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Tour spec key `model` (experimental), in `[defaults]` or per guest, for the `claude` and `codex` adapters: it is passed as
+  `--model` to the agent CLI. Use it to run bulk work on a cheaper model, for example under `auth = "own-login"`, where model
+  use is not metered. The `command` adapter takes none. An omitted `model` changes nothing. A model the concierge does not
+  price is billed at its highest rate, so it cannot get past a budget. It shows in `tour status` and the result record only
+  when set. See [docs/tours.md](docs/tours.md).
 - `motel omnigent setup | status | mcp-config` (experimental): one command that checks cabins and Omnigent, installs motel
   into Omnigent's environment when the provider is missing there, and writes the `sandbox:` block into the Omnigent server
   config (backup first, atomic, idempotent, other keys and comments kept). It never restarts the server. `status` is the

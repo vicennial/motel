@@ -88,9 +88,12 @@ class Service:
 
     def view(self, doc: dict, *, detail: bool = False) -> dict:
         guests = []
+        models = {sg["id"]: sg["model"] for sg in doc.get("spec", {}).get("guests", []) if sg.get("model") is not None}
         for gid, g in doc["guests"].items():
             row = {"id": gid, "status": g["status"], "cleanup": g["cleanup"], "attempts": len(g["attempts"]),
                    "result": g.get("result")}
+            if gid in models:
+                row["model"] = models[gid]
             if g.get("reason"):
                 row["reason"] = g["reason"]
             if detail:
