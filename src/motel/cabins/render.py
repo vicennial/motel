@@ -43,9 +43,13 @@ def cabin_line(c) -> str:
 def render_cabin(c) -> str:
     offer = c.get("offer") or {}
     lines = [(f"cabin {c['lease_id']} {c['state']}: {offer.get('server_type')} in {offer.get('location')}, "
-             f"{money_line(offer)}, access {(c.get('access') or {}).get('mode')}"),
-             (f"expires {c.get('expires_at')}; deleted after {c.get('destroy_after')}, even if busy. "
-             "Deletion is final: copy results out first.")]
+             f"{money_line(offer)}, access {(c.get('access') or {}).get('mode')}")]
+    if c.get("state") == "released":
+        if c.get("released_at"):
+            lines.append(f"released {c['released_at']}.")
+    else:
+        lines.append(f"expires {c.get('expires_at')}; deleted after {c.get('destroy_after')}, even if busy. "
+                     "Deletion is final: copy results out first.")
     est = billing_line(c)
     if est:
         paid = (c.get("billing") or {}).get("paid_until")

@@ -121,9 +121,11 @@ and npm caches, and puts nothing in a user's home.
 - **Upgrades.** The image does not update itself. To change the Omnigent version or the agent CLIs, bake a new image (under a
   new name, or after `tour image rm`) and point `image:` at it. If the Omnigent server is upgraded, the host in the image must
   match it.
-- **Not measured yet.** The aim is a first session that starts in about a minute instead of several. That has not been timed on a
-  real cabin, so no number is claimed here. Also check that the apt `nodejs` on the cabin is new enough for the agent CLIs you
-  install: the provider uses the same packages and has the same limit.
+- **Measured boot time.** On 2026-11-21, baking `omnigent 0.21.0` plus `@anthropic-ai/claude-code` and `@openai/codex` with
+  `bake-script` produced a 1.54 GB Hetzner snapshot; checking in a `cpx52` in `fsn1` from that image took **50.7 seconds** to
+  SSH-ready with `omnigent`, `claude`, `codex`, `node` (Ubuntu 24.04 apt `v18.19.1`), `python3` (`3.12.3`) and `pyyaml` already
+  on `/usr/local/bin` (vs. 43–75 s boot plus several minutes of apt/pip/npm on a bare cabin). Always check that the apt `nodejs`
+  on your base image is new enough for the agent CLIs you install: the provider uses the same packages and has the same limit.
 
 ### Starting tours from a session
 

@@ -75,3 +75,15 @@ def test_a_checkout_after_the_server_may_still_exist_does_not_claim_zero_servers
     pending = dict(c.view(rec), state="cleanup_pending")
     assert cabin_receipt(pending)["servers_left"] == 1 and cabin_receipt(pending)["final"] is False
 
+
+def test_released_cabin_render_omits_future_deletion_notice(world):
+    from motel.cabins.render import render_cabin
+
+    c = world.controller()
+    view = world.checkin(c)
+    assert "deleted after" in render_cabin(view)
+    done = c.checkout(view["lease_id"])
+    rendered = render_cabin(done)
+    assert "deleted after" not in rendered
+    assert f"released {done['released_at']}." in rendered
+
