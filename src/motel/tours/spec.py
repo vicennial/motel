@@ -25,6 +25,8 @@ from motel.tours.guest import (
     MAX_EGRESS_HOSTS,
     MAX_OUTPUT_TOKENS_LIMIT,
     MIN_OUTPUT_TOKENS,
+    MODEL_MAX,
+    MODEL_RE,
     RESERVED_ENV_NAMES,  # noqa: F401  (re-exported: the guest part owns the list)
     RESERVED_ENV_PREFIXES,  # noqa: F401
     egress_cost,
@@ -63,10 +65,10 @@ SECRET_WORDS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "A
 TOP_KEYS = {"tour", "defaults", "guests", "schema"}
 TOUR_KEYS = {"name"}
 SHARED_KEYS = {"server_type", "image", "ttl", "adapter", "env", "secrets", "egress", "budget_usd", "max_turns", "artifacts",
-               "auth", "max_output_tokens"}
+               "auth", "max_output_tokens", "model"}
 GUEST_ONLY_KEYS = {"id", "prompt", "argv", "repo", "base", "overlay"}
 WIRE_GUEST_KEYS = {"id", "prompt", "argv", "adapter", "env", "secrets", "egress", "server_type", "image", "ttl_s",
-                   "budget_usd", "max_turns", "artifacts", "base", "bundle", "overlay_input", "auth", "max_output_tokens"}
+                   "budget_usd", "max_turns", "artifacts", "base", "bundle", "overlay_input", "auth", "max_output_tokens", "model"}
 
 
 @dataclass
@@ -84,6 +86,7 @@ class Guest:
     budget_usd: Decimal | None = None
     max_turns: int = 30
     max_output_tokens: int | None = None   # per model reply (claude adapter); None leaves the guest's own default
+    model: str | None = None   # claude and codex adapters: the CLI's --model value; None leaves the CLI's own default
     artifacts: list = field(default_factory=list)
     auth: str = "concierge"      # "concierge" (API keys, the default) or "own-login" (opt-in, claude adapter only)
     base: str = "HEAD"           # user shape: a revision; wire shape: a full commit
@@ -99,6 +102,8 @@ class Guest:
                "auth": self.auth}
         if self.max_output_tokens is not None:
             doc["max_output_tokens"] = self.max_output_tokens
+        if self.model is not None:
+            doc["model"] = self.model
         if self.ttl is not None:
             doc["ttl_s"] = int(self.ttl.total_seconds())
         if self.budget_usd is not None:
@@ -320,6 +325,11 @@ def _guest(raw: dict, defaults: dict, index: int, limits, cabin_types, wire: boo
     if out_tokens is not None and (not _is_int(out_tokens) or not MIN_OUTPUT_TOKENS <= out_tokens <= MAX_OUTPUT_TOKENS_LIMIT):
         raise Usage(f"{where}: max_output_tokens must be a whole number from {MIN_OUTPUT_TOKENS} to {MAX_OUTPUT_TOKENS_LIMIT} "
                     f"(default {DEFAULT_MAX_OUTPUT_TOKENS})")
+    model = _pick(raw, defaults, "model", None)
+    if model is not None:
+        if adapter == "command":
+            raise Usage(f"{where}: `model` belongs to the claude and codex adapters; the command adapter runs your argv as given")
+        _str(model, f"{where} model", pattern=MODEL_RE, maximum=MODEL_MAX, example="claude-sonnet-5-5")
     artifacts = check_globs(_pick(raw, defaults, "artifacts", []), f"{where} artifacts")
     if auth == "own-login":
         if adapter != "claude":
@@ -334,7 +344,7 @@ def _guest(raw: dict, defaults: dict, index: int, limits, cabin_types, wire: boo
         raise Usage(f"{where}: budget_usd without `secrets` has nothing to spend on; name a binding such as [\"anthropic\"]")
     guest = Guest(id=gid, adapter=adapter, prompt=prompt, argv=list(argv), env=env, secrets=secrets, egress=egress,
                   server_type=server_type, image=image, ttl=ttl, budget_usd=budget, max_turns=turns, max_output_tokens=out_tokens,
-                  artifacts=artifacts, auth=auth)
+                  model=model, artifacts=artifacts, auth=auth)
     _inputs(guest, raw, wire, where)
     if limits is not None:
         guest.ttl = guest.ttl if guest.ttl is not None else min(DEFAULT_TTL, limits.max_ttl)

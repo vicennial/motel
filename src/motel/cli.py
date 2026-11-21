@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 from motel import __version__
-from motel.errors import EXIT_ERROR, INSTALL_HINT, MotelError, NotSetUp, SystemFault, Usage
+from motel.errors import EXIT_ERROR, MotelError, NotSetUp, SystemFault, Usage, desk_refusal, not_installed  # noqa: F401
 from motel.render import render, warnings_for
 from motel.units import canonical_minutes, check_room, check_task, parse_duration, parse_size_gb
 
@@ -32,10 +32,45 @@ class CliParser(argparse.ArgumentParser):
         raise SystemExit(status)
 
 
+# `motel --help`: every top-level command, grouped. The room verbs come from the parser itself; the commands that are
+# routed to their own modules (ROUTES) are described here. A test checks that both sets are listed in full.
+ROOM_VERBS = ("checkin", "ls", "extend", "checkout", "restore")
+HELP_GROUPS = (
+    ("cabins (experimental: disposable servers in your own cloud account)", (
+        ("cabin", "run a command on a fresh server and delete it: motel cabin --help"),
+        ("omnigent", "use cabins as an Omnigent sandbox provider: motel omnigent setup"))),
+    ("tours (experimental: swarms of bounded agent jobs, one fresh cabin per guest)", (
+        ("tour", "start a tour, wait for it, fetch its results: motel tour --help"),)),
+    ("setup", (
+        ("try", "a 30-second offline demo (try --cabin: a cabin run and a tour, with receipts)"),
+        ("install", "install the front desk on this host (run as root)"),
+        ("doctor", "check the installation"),
+        ("mcp", "run the MCP server for your agent"),
+        ("skill", "print or install the agent skill (SKILL.md)"))),
+)
+
+
+class TopParser(CliParser):
+    def format_help(self) -> str:
+        aliases = {"checkin": "acquire", "ls": "status", "checkout": "release"}
+        width = max(len(n) + (len(aliases[n]) + 3 if n in aliases else 0) for n in ROOM_VERBS)
+        width = max([width] + [len(n) for _, items in HELP_GROUPS for n, _ in items])
+        lines = ["usage: motel [-h] [--version] COMMAND ...", "", self.description, "", "rooms (temporary private folders on cloud volumes)"]
+        for verb in ROOM_VERBS:
+            label = verb + (f" ({aliases[verb]})" if verb in aliases else "")
+            lines.append(f"  {label.ljust(width)}  {self.verb_help[verb]}")
+        for title, items in HELP_GROUPS:
+            lines += ["", title]
+            lines += [f"  {name.ljust(width)}  {text}" for name, text in items]
+        lines += ["", "options:", "  -h, --help  show this help message and exit", "  --version   print the version", "",
+                  "Every command takes --help. Start here: motel try"]
+        return "\n".join(lines) + "\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = CliParser(add_help=False, allow_abbrev=False)
     common.add_argument("--json", action="store_true", help="machine-readable output")
-    parser = CliParser(prog="motel", allow_abbrev=False,
+    parser = TopParser(prog="motel", allow_abbrev=False,
                        description="Disk and servers by the hour, for agents. Rooms: temporary private directories on temporary volumes.")
     parser.add_argument("--version", action="store_true", help="print the version")
     sub = parser.add_subparsers(dest="verb", parser_class=CliParser, metavar="VERB")
@@ -61,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("room")
     p.add_argument("--for", dest="ttl", default=None, help="new checkout time (default 6h)")
     sub.add_parser("doctor", parents=[common], allow_abbrev=False, help="check the installation")
+    parser.verb_help = {a.dest: a.help for a in sub._choices_actions}
     return parser
 
 
@@ -94,6 +130,8 @@ ROUTES = {
     "mcp": ("motel.mcp_server", ("motel.mcp_server",), "MCP server not installed in this version of motel"),
     "install": ("motel.installer", ("motel.installer",), "the installer is not part of this version of motel"),
     "skill": ("motel.skill", ("motel.skill",), "the agent skill is not part of this version of motel"),
+    "omnigent": ("motel.omnigent_setup.cli", ("motel.omnigent_setup", "motel.omnigent_setup.cli"),
+                 "the Omnigent setup command is not installed in this version of motel"),
     "try": ("motel.onboard.demo", ("motel.onboard", "motel.onboard.demo"), "the guided demo is not installed in this version of motel"),
 }
 
@@ -120,7 +158,7 @@ def route(word: str, rest: list, out, err) -> int:
 def default_runner(argv: list) -> tuple:
     sudo = next((s for s in SUDO_CANDIDATES if os.path.exists(s)), None)
     if sudo is None or not os.path.exists(DESK):
-        raise NotSetUp("the motel front desk is not installed on this host", INSTALL_HINT)
+        raise not_installed()
     proc = subprocess.run([sudo, "-n", DESK, *argv], capture_output=True, text=True, stdin=subprocess.DEVNULL,
                           env=SAFE_ENV, shell=False)
     return proc.returncode, proc.stdout, proc.stderr
@@ -150,8 +188,7 @@ def main(argv=None, *, runner=default_runner, out=None, err=None) -> int:
                 raise ValueError
         except ValueError:
             if code == 1 and "sudo" in stderr:
-                raise SystemFault("sudo refused to run the front desk for you (you may not be in allow_users)",
-                                  "motel doctor") from None
+                raise desk_refusal(stderr) from None
             raise SystemFault("the front desk returned no usable answer", "motel doctor") from None
     except MotelError as exc:
         print(json.dumps(exc.as_json()) if want_json else exc.line(), file=out if want_json else err)

@@ -80,6 +80,31 @@ stderr line: `motel: no room nope-ab12. Try: motel ls --mine`.
 `sudo` itself refusing (the caller is not in `allow_users`) is reported as exit 5 with a message that names
 `allow_users`.
 
+## Cabins (`motel cabin ... --json`)
+
+Experimental. `cabin checkin --json` prints the cabin object itself; the other verbs wrap it as `{"cabin": {...}}`. When the cabin
+started from a baked image (`--image`), these fields are set, and are absent or describe the stock image otherwise:
+
+| key | meaning |
+|---|---|
+| `offer.image_id`, `offer.image_name` | the image the server was created from. For a baked image the name is the baked name |
+| `offer.image_type` | `snapshot` for a baked image, `system` for the stock image |
+| `receipt.image` | the baked image name. The key is absent when the stock image was used |
+
+`cabin run --json` ends with one object (see [Cabins](cabins.md#using-a-cabin)); it has `image` (the baked image name) only when
+one was used.
+
+`cabin images --json` lists the images this host's operator baked, which the desk accepts for `--image`:
+
+```json
+{"schema": "motel/v1", "ok": true,
+ "images": [{"id": 4711, "name": "omnigent", "created": "2026-11-08T12:30:00Z", "image_size_gb": 1.5, "disk_size_gb": 40}]}
+```
+
+`images` is an empty list when nothing was baked. `image_size_gb` and `disk_size_gb` can be `null`. A front desk that predates
+`--image` answers `checkin --image` with exit 2 and `error` "the installed front desk is older than this motel and does not know --image";
+for `images`, an older desk or sudoers rule gives exit 2 or 1 with a similar `error` and the hint to run `motel install --upgrade`.
+
 ## Tours (`motel tour ... --json`)
 
 Experimental. Every verb prints one object with `"schema": "motel/v1"`; failures use the same error object as the
@@ -99,13 +124,13 @@ other verbs. Guest text in these objects is untrusted data.
 `tour` is `{id, name, status, cleanup, owner, created_at, finished_at, cancel_requested, counts, guests, budget}`; `status`
 adds `supervisor` and `lost_listeners` (`{attempt: reason}` for this tour's attempts whose concierge listener was lost in a
 concierge restart, `null` when the concierge cannot be asked);
-each guest is `{id, status, cleanup, attempts, result}` (plus `reason` when motel itself ended the guest, for example
+each guest is `{id, status, cleanup, attempts, result}` (plus `model` when the spec set one, and `reason` when motel itself ended the guest, for example
 `tours_disabled` or `cabins_disabled`). Guest `status`: `queued`, `booking`, `running`,
 `collecting`, `done`, `failed`, `timed_out`, `over_budget`, `cancelled`. `cleanup`: `live`, `deleting`, `deleted`,
 `deletion_pending` (the server may still bill).
 
 The result record has `schema: "motel/tour-result/v1"`, `tour`, `guest`, `attempt`, `status`, `cleanup`, `auth`
-(`api-key` or `own-login`), `branch`, `base`, `partial`, `error`, and:
+(`api-key` or `own-login`), `model` (only when the spec set one), `branch`, `base`, `partial`, `error`, and:
 
 - `verified`: measured or saved by motel (`duration_s`, `bundle`, `head` and `changed_files` computed from the
   fetched bundle, `artifacts` with digests, `cost_eur`, `usage`, `cabin`). `usage` is `{metered: false, note}` for own-login.
@@ -121,8 +146,52 @@ Operator verbs (`reap`, `bake`, `image ls|rm`, `own-login set|status|clear`) pri
 `recorded`: whether this host baked the image; `image rm` refuses unrecorded ones); `own-login status`
 shows presence and modification time only, never the token.
 
+## Omnigent setup (`motel omnigent ... --json`)
+
+Experimental. `setup` and `status` print one object with `"schema": "motel/v1"`. Exit codes: 0 ok, 2 usage, 3 the config
+was not edited (a block for another provider without `--yes`, or a file that cannot be edited safely), 5 an install or file
+error, 8 not ready (cabins or Omnigent missing, or `status` found something to do).
+
+`setup`:
+
+```json
+{"schema": "motel/v1", "ok": true, "dry_run": false, "changed": true,
+ "steps": [{"step": "Cabins work", "ok": true, "status": "ok", "detail": "..."}],
+ "config": {"path": "/srv/omnigent/server.yaml", "source": "default", "action": "add", "backup": "/srv/omnigent/server.yaml.bak-20261114T103005"},
+ "next": {"restart": "omnigent server -c /srv/omnigent/server.yaml", "verify": "omnigent sandbox create --help",
+          "server_running": false, "server_uses_config": false}}
+```
+
+| key | meaning |
+|---|---|
+| `steps[].status` | `ok`, `installed`, `written`, `unchanged`, `would install`, `would change`, `not written` or `FAILED`. The steps stop at the first one with `ok: false` |
+| `config.source` | where the path came from: `--config`, `the running server (pid N)` or `default` (`server.yaml` in the Omnigent config home) |
+| `config.action` | `create`, `add`, `update`, `replace`, `unchanged` or `manual`; `null` when setup stopped earlier |
+| `config.backup` | the backup file, or `null` (no backup for a new file, a dry run or an unchanged file) |
+| `config.block` | present with `manual` (and when the edited file failed its check): the exact block to paste |
+| `next` | present on success: what is left to do. `setup` never restarts the server |
+
+A failed `setup` has the same object with `ok: false` plus `error`, `hint` and `code` (the failure keys above).
+
+`status` is read-only:
+
+```json
+{"schema": "motel/v1", "ok": false,
+ "checks": [{"check": "provider visible", "ok": false, "level": "fail", "detail": "..."}],
+ "config": {"path": "...", "source": "default", "exists": false, "present": false, "matches": false, "action": "create"},
+ "omnigent": {"found": true, "version": "0.21.0", "executable": "...", "python": "...", "kind": "uv tool"}}
+```
+
+`checks` holds `cabins`, `omnigent`, `provider visible`, `config block`, `block matches setup` and `server`; `level` is
+`ok`, `fail`, `warn` or `info`. When the config names a baked `image:`, `checks` also holds `baked image` (does `motel cabin images`
+list that name?) and, if `bootstrap` is not `none`, an `info` row `bootstrap`; the top-level `image` object is
+`{"name": null or "omnigent", "bootstrap": null or "none", "exists": null, true or false}`. `ok` is true when no check other than `server` fails. `mcp-config` prints the MCP server
+snippet (`{"mcpServers": {"motel": {...}}}`) and nothing else on stdout. `setup --image NAME` writes `image: NAME` and `bootstrap: none`
+into the `motel:` block. `bake-script` prints a shell script on stdout and has no JSON form.
+
 ## Extension point
 
 `motel cabin ...` is passed (without the word `cabin`) to `motel.cabins.cli.main(argv)` when that module is
 installed; otherwise it exits 2 with `cabins are not installed`. `motel mcp ...` is routed the same way to
-`motel.mcp_server.main(argv)` (exit 2 with `MCP server not installed` if the module is absent).
+`motel.mcp_server.main(argv)` (exit 2 with `MCP server not installed` if the module is absent). `motel omnigent ...` is routed to
+`motel.omnigent_setup.cli.main(argv)` in the same way.

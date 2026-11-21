@@ -26,7 +26,8 @@ catches mistakes.
 Each image id is also written to ``tour-images.json`` in the cabins state directory (root-owned) when it is created;
 ``delete`` only removes an image that has such a record (and the provider labels).
 
-Public entry points: :func:`bake`, :func:`images`, :func:`delete`. Everything provider-facing goes through
+Public entry points: :func:`bake`, :func:`images`, :func:`delete`, and for ordinary cabin users :func:`user_images`,
+:func:`parse_image_spec` and :func:`resolve_image` (what ``motel cabin checkin --image`` may start from). Everything provider-facing goes through
 ``controller.hz`` (``motel.cabins.provider.GuardedApi``), so image reads and writes are label-scoped and
 ownership-guarded like every other write.
 """
@@ -61,6 +62,7 @@ POLL_S = 5
 BAKE_TASK = "bake"
 BAKE_OWNER = "motel-bake"
 IMAGES_FILE = "tour-images.json"
+IMAGE_ID_RE = re.compile(r"^[1-9][0-9]{0,17}$")
 SCAN_EXIT = 3                       # exit status of the finalize script when a credential file is found
 
 # --- what the finalize script removes -------------------------------------------------------------------------------
@@ -515,3 +517,50 @@ def delete(controller, image_id) -> dict:
     if pending is not None:
         _settle_intent(controller, pending)
     return {"schema": "motel/tour-image/v1", "id": image_id, "deleted": True}
+
+
+# --- what an ordinary cabin user may start from ----------------------------------------------------------------------
+
+def parse_image_spec(spec) -> tuple:
+    """``("id", int)`` for digits only, ``("name", str)`` for an image name. Anything else is a usage error.
+
+    This is the whole syntax a user can send across the privilege boundary: no provider name, no path, no label."""
+    if isinstance(spec, str) and IMAGE_ID_RE.fullmatch(spec):
+        return "id", int(spec)
+    if isinstance(spec, str) and IMAGE_NAME_RE.fullmatch(spec) and not spec.isdigit():     # digits only is always an id
+        return "name", spec
+    raise Usage("an image is the name of a baked image (1-40 lowercase letters, digits and hyphens) or its numeric id",
+                "motel cabin images")
+
+
+def user_images(controller) -> list:
+    """The images a cabin user may start from, oldest name first: this host's own tour images (provider labels and
+    shape checked by ``controller.hz.list_images``) that this host also recorded when it baked them, and that are
+    available. An image the provider shows with our labels but that has no record here is not offered.
+
+    ``[{id, name, created, image_size_gb, disk_size_gb}]``; nothing else about an image or its source cabin."""
+    recorded = _load_records(controller)
+    out = []
+    for item in controller.hz.list_images():
+        name = (item.get("labels") or {}).get("image-name")
+        if str(item["id"]) not in recorded or item.get("status") != "available" or not isinstance(name, str):
+            continue
+        out.append({"id": item["id"], "name": name, "created": item.get("created"),
+                    "image_size_gb": item.get("image_size"), "disk_size_gb": item.get("disk_size")})
+    return sorted(out, key=lambda row: (row["name"], row["id"]))
+
+
+def resolve_image(controller, spec) -> dict:
+    """The one image ``spec`` (a name or a numeric id, see :func:`parse_image_spec`) names among :func:`user_images`.
+
+    Refuses an unknown spec, a name that two images share (the user picks by id) and everything that is not a baked
+    image of this host: a system image such as the configured base image is never matched, because only labelled
+    snapshots are listed."""
+    kind, value = parse_image_spec(spec)
+    found = [row for row in user_images(controller) if row["id" if kind == "id" else "name"] == value]
+    if not found:
+        raise PolicyRefused(f"no baked image {value} is available on this host", "motel cabin images")
+    if len(found) > 1:
+        ids = ", ".join(str(row["id"]) for row in found)
+        raise PolicyRefused(f"more than one image is named {value} (ids {ids})", "motel cabin checkin --image " + str(found[0]["id"]))
+    return found[0]

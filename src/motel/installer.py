@@ -30,7 +30,7 @@ CLI = "/usr/local/bin/motel"
 USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "restore", "doctor")
 # Cabin verbs an ordinary user may run, pinned one per sudoers line (tests check this equals motel.cabins.desk.USER_VERBS).
 # `setup`, `reap` and `resolve` are operator verbs: root only.
-CABIN_USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "doctor")
+CABIN_USER_VERBS = ("checkin", "ls", "status", "extend", "checkout", "doctor", "images")
 # Tour verbs an ordinary user may run (tests check this equals motel.tours.desk.USER_VERBS). `supervise`, `reap`, `bake`,
 # `image` and `own-login` are operator verbs: root only.
 TOUR_USER_VERBS = ("start", "ls", "status", "wait", "result", "fetch", "logs", "cancel")
@@ -568,8 +568,7 @@ def install(prefix: str, src_dir: str, *, users: list | None, provider: str | No
     if os.path.isdir(installed_pkg) and os.path.realpath(source_pkg) == os.path.realpath(installed_pkg):
         raise Usage(f"the source is the installed copy itself ({installed_pkg}, version {read_version(installed_pkg)}): "
                     "that would copy it onto itself and upgrade nothing",
-                    "sudo uvx --from motel==X.Y.Z motel install --upgrade   (runs from root's own cache), "
-                    "or install.sh --upgrade from a root-owned clone; see docs/install.md")
+                    install_hint("--upgrade"))
     provider = (provider_from_data(config) if upgrade else None) or provider or provider_from_data(config) or "hetzner"
     if provider not in registry.provider_names():
         raise Usage(f"unknown provider {provider!r}", f"{cmd} --provider " + "|".join(registry.provider_names()))

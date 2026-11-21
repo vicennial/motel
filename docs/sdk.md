@@ -60,13 +60,14 @@ Cabins are disposable servers. Deletion at checkout is final. See [Cabins](cabin
 
 | call | CLI | returns |
 |---|---|---|
-| `cabin(server_type=None, ttl=None, task=None, disk_gb=None, *, keep=False)` | `cabin checkin`, then `cabin checkout` | context manager yielding `Cabin` |
-| `cabin_checkin(...)` | `cabin checkin --json` | `Cabin` |
+| `cabin(server_type=None, ttl=None, task=None, disk_gb=None, *, keep=False, image=None)` | `cabin checkin`, then `cabin checkout` | context manager yielding `Cabin` |
+| `cabin_checkin(..., image=None)` | `cabin checkin --json` | `Cabin`; `image` is a baked image name or id, and `Cabin.image` names it |
+| `cabin_images()` | `cabin images` | `list[dict]`: `id`, `name`, `created`, `image_size_gb`, `disk_size_gb` |
 | `cabins(*, strict=False)` | `cabin ls` | `list[Cabin]` |
 | `cabin_status(id)` / `cabin_extend(id, ttl)` | `cabin status\|extend` | `Cabin` |
 | `cabin_checkout(id, *, strict=True)` | `cabin checkout` | `Cabin`; raises `InventoryIncomplete` if cleanup is still pending |
 | `cabin_ssh(id, command, *, check=False, timeout=None)` | `cabin ssh ID -- CMD` | `CabinRun` |
-| `cabin_run(command, *, sync=None, server_type=None, ttl=None, task=None, disk_gb=None, keep=False, check=False)` | `cabin run -- CMD` | `CabinRun` |
+| `cabin_run(command, *, sync=None, server_type=None, ttl=None, task=None, disk_gb=None, keep=False, check=False, image=None)` | `cabin run -- CMD` | `CabinRun` |
 
 `cabin_run` is the one-shot: check in, copy a git checkout (`sync`, default the current directory; tracked files
 plus untracked files that are not ignored) to `~/work` on the cabin, run the command there, check out.

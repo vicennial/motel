@@ -285,6 +285,11 @@ def validate_card(raw, adapters):
     if (isinstance(tokens, bool) or not isinstance(tokens, int)
             or not adapters.MIN_OUTPUT_TOKENS <= tokens <= adapters.MAX_OUTPUT_TOKENS_LIMIT):
         bad(f"max_output_tokens must be an integer from {adapters.MIN_OUTPUT_TOKENS} to {adapters.MAX_OUTPUT_TOKENS_LIMIT}")
+    if "model" in card:
+        if adapter == "command":
+            bad("the command adapter takes no model")
+        if not adapters.card_model_ok(card["model"]):
+            bad(f"model must be a string of 1 to {adapters.MODEL_MAX} characters, as in claude-sonnet-5-5")
     max_mb = card.get("max_result_mb", DEFAULT_RESULT_MB)
     if isinstance(max_mb, bool) or not isinstance(max_mb, int) or not 1 <= max_mb <= MAX_RESULT_MB:
         bad("invalid max_result_mb")

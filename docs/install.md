@@ -9,8 +9,11 @@ hold the wheel), the sudoers rule and the housekeeping units, and leave the conf
 
 ```
 sudo uvx --from motel motel install --provider hetzner --users alice          # first install
-sudo uvx --from motel==X.Y.Z motel install --upgrade                          # later: replace the code, keep everything else
+sudo uvx --from motel==0.1.0 motel install --upgrade                          # later: replace the code, keep everything else
 ```
+
+`0.1.0` is an example: use the release you want. `uvx` can reuse a version it has already cached, so a pin makes sure the
+upgrade installs the release you named.
 
 Run it with `sudo uvx`, so the code comes from **root's own** uv cache. `sudo motel install --upgrade` with the
 installed `motel` is refused: its source is the installed copy itself, and copying a directory onto itself upgrades

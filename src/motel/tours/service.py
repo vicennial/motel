@@ -19,6 +19,7 @@ from datetime import timedelta
 from motel.cabins.errors import Fail
 from motel.cabins.util import iso
 from motel.errors import install_hint
+from motel.receipts import tour_receipt
 from motel.tours import artifacts as art
 from motel.tours import bundle, ownlogin, recovery, spec
 from motel.tours.errors import Incomplete, NotFound, Refused, Usage
@@ -87,9 +88,12 @@ class Service:
 
     def view(self, doc: dict, *, detail: bool = False) -> dict:
         guests = []
+        models = {sg["id"]: sg["model"] for sg in doc.get("spec", {}).get("guests", []) if sg.get("model") is not None}
         for gid, g in doc["guests"].items():
             row = {"id": gid, "status": g["status"], "cleanup": g["cleanup"], "attempts": len(g["attempts"]),
                    "result": g.get("result")}
+            if gid in models:
+                row["model"] = models[gid]
             if g.get("reason"):
                 row["reason"] = g["reason"]
             if detail:
@@ -104,6 +108,7 @@ class Service:
                "owner": doc["owner"]["name"], "created_at": doc["created_at"], "finished_at": doc.get("finished_at"),
                "cancel_requested": self.store.cancel_requested(doc["id"]), "counts": counts, "guests": guests,
                "budget": dict(doc["budget"])}
+        out["receipt"] = tour_receipt(out)
         if detail:
             out["supervisor"] = dict(doc["supervisor"])
             out["lost_listeners"] = self._lost_listeners(doc["id"])

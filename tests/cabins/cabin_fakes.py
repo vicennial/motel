@@ -207,7 +207,7 @@ class FakeHetzner:
             name = dict(urllib.parse.parse_qsl(query)).get("name")
             if name not in self.types:
                 return {"server_types": []}
-            st = {"name": name, "architecture": "x86", "deprecation": None,
+            st = {"name": name, "architecture": "x86", "deprecation": None, "cores": 8, "memory": 16.0,
                   "prices": [{"location": "fsn1", "price_hourly": {"net": self.types[name], "gross": "0"}}]}
             if self.type_locations is not None:
                 st["locations"] = self.type_locations

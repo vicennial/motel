@@ -206,7 +206,10 @@ def execute(args, *, paths: CabinPaths, caller: CabinCaller, stdin=None, groups_
             setup_check=hooks.get("setup_check") or (lambda: bundle.setup_problems(paths.real(bundle.INSPECT_ROOT))))
     operator = is_operator(caller, service.cabin_cfg, groups_fn)
     if verb in OPERATOR_VERBS and not operator:
-        raise Refused(f"`{verb}` is an operator command", "sudo motel-desk tour " + verb)
+        hint = (f"sudo env -u SUDO_UID motel-desk tour {verb}"
+                if caller.operator and is_allowed(service.cabin_cfg, caller, groups_fn)
+                else f"sudo motel-desk tour {verb}")
+        raise Refused(f"`{verb}` is an operator command", hint)
     if verb not in OPERATOR_VERBS and not (verb in OPERATOR_MAY_USE and operator) and not is_allowed(service.cabin_cfg, caller, groups_fn):
         raise Refused(f"{caller.name} is not in allow_users", "sudo motel-desk cabin doctor")
     if verb == "start":

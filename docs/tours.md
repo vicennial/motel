@@ -19,6 +19,21 @@ Other parts of the tours feature:
 | **Attempt** | One run of a guest on one fresh cabin. A retry is a new attempt on a new cabin. |
 | **Binding** | A named upstream API key held by the concierge, for example `anthropic`. |
 
+## First tour
+
+A tour of one command guest needs no model and no API key. It needs [cabins](cabins.md#first-cabin) working, with tours on
+(`sudo uvx --from motel motel install --cabins --tours --users $USER` on a new host, or see
+[Operator setup](#operator-setup)). In your git repository:
+
+```bash
+echo 'guests = [{ id = "check", adapter = "command", argv = ["make", "test"], secrets = [], budget_usd = 0 }]' > tour.toml
+T=$(motel tour start tour.toml)     # prints the tour id
+motel tour wait "$T"                # blocks until the guest finishes
+motel tour result "$T" check        # what motel verified, and what the guest claimed
+```
+
+For agent guests (`claude`, `codex`) with a budget and commits to fetch, read on.
+
 ## Quick start
 
 `tour.toml`, in the root of your repository:
@@ -29,6 +44,7 @@ name = "fix-flaky-tests"
 
 [defaults]
 adapter = "claude"            # or "codex", or "command"
+model = "claude-sonnet-5-5"   # optional; default is the CLI's own default
 ttl = "45m"                   # wall clock per guest
 secrets = ["anthropic"]       # concierge bindings the guest may use
 budget_usd = 1.50             # model spend per guest, enforced by the concierge
@@ -86,6 +102,7 @@ TOML or JSON. Unknown keys are errors. `[defaults]` apply to every guest; a gues
 | `server_type`, `image` | both | A cabin type, and a baked image name or id (see [Operator setup](#operator-setup)). |
 | `max_turns` | both | Turn limit for the `claude` adapter (1-500). |
 | `max_output_tokens` | both | Largest model reply, 256-128000 (the claude adapter sets `CLAUDE_CODE_MAX_OUTPUT_TOKENS`). Omit it to keep the guest's own default (8000). |
+| `model` | both | Model for the `claude` and `codex` adapters, passed as `--model`: an id such as `claude-sonnet-5-5` or an alias such as `sonnet`. At most 64 characters, letters, digits and `. _ : [ ] -`, starting with a letter or digit. Omit it to keep the CLI's own default. The `command` adapter takes none. With `auth = "concierge"` the concierge prices the model: an id it does not list is billed at its highest rate, so list it in the binding's `pricing` table (see [concierge.md](concierge.md)). |
 | `auth` | both | `concierge` (default) or `own-login` (see [below](#using-your-own-claude-login-opt-in)). |
 
 A tour can only ask for less than the operator's ceilings. Nothing in a spec can raise a limit, and the front desk
@@ -160,6 +177,7 @@ runs before the server is created, so a cancel that arrives during the firewall 
 - **`concierge_refusals`**: the refusals the runner saw (`motel_budget_exhausted`, `motel_concurrency`, ...) next to
   the concierge's own count. A budget refusal that the concierge's count backs up makes the guest `over_budget`.
 - **`partial`**: true when the guest was cancelled or timed out, so only a bounded part of its output was collected.
+- **`model`**: the spec's `model`, present only when the spec set one.
 - **`auth`** and `usage`: for `own-login`, usage says `"metered": false`: model use is not metered.
 
 Statuses. Execution: `queued`, `booking`, `running`, `collecting`, `done`, `failed`, `timed_out`, `over_budget`,
@@ -307,7 +325,7 @@ and such an administrator (who need not be in `allow_users`) see every tour with
 All keys, the binding options, and the `[tours.own_login]` table: [configuration.md](configuration.md) and
 [concierge.md](concierge.md). A baked image (`sudo motel-desk tour bake NAME --script setup.sh`) holds your agent CLIs;
 `tour image ls|rm` manages them: `ls` shows `recorded` for each image (true when this host baked it), and `rm` only
-removes recorded images. A bake is refused on a tailscale host. `motel doctor` checks the sudoers rule and warns while own-login is enabled.
+removes recorded images. Users can also start an ordinary cabin from these images: see [Start from a baked image](cabins.md#start-from-a-baked-image). A bake is refused on a tailscale host. `motel doctor` checks the sudoers rule and warns while own-login is enabled.
 
 ## Inspecting the bundle
 
@@ -398,7 +416,7 @@ How the token travels: the supervisor reads the token file and writes it to the 
 one line `token\n` (at most 4 KB). It is never in `card.json`, a command line, a file on the guest, the environment of
 the ssh process, a log, the tour state or a result; motel also redacts it from fetched output. The guest's egress
 allows `api.anthropic.com` and nothing else beyond your list. The result shows `auth: own-login` and model usage as
-"not metered". `sudo motel-desk tour own-login clear` removes the stored token.
+"not metered". Because model use is not metered here, pick a cheaper `model` for bulk work. `sudo motel-desk tour own-login clear` removes the stored token.
 
 ## From an agent
 

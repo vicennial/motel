@@ -70,6 +70,7 @@ from motel.cabins.util import (
     utcnow,
 )
 from motel.errors import INSTALL_HINT, install_hint
+from motel.receipts import cabin_receipt
 
 # Fixed limits. Config cannot loosen them.
 MAX_TTL_PER_CALL = timedelta(hours=24)
@@ -312,7 +313,10 @@ class Controller:
                 or not is_pos_int(img.get("id"))):
             raise PolicyRefused("the configured image is not current")
         hours = decimal.Decimal(int(ttl.total_seconds())) / 3600
-        return {"server_type": server_type, "location": loc, "image_id": img["id"], "image_name": img.get("name"),
+        return {"server_type": server_type, "location": loc, "image_id": img["id"], "image_type": img.get("type"),
+                "image_name": (img.get("labels") or {}).get("image-name") or img.get("name"),
+                "vcpus": st.get("cores") if is_pos_int(st.get("cores")) else None,
+                "memory_gb": st.get("memory") if isinstance(st.get("memory"), (int, float)) and st["memory"] > 0 else None,
                 "server_hourly_net_eur": money(server_net), "ipv4_hourly_net_eur": money(ip_net),
                 "disk_hourly_net_eur": money(disk_net), "total_hourly_net_eur": money(total),
                 "ttl_cost_net_eur": money(total * hours), "currency": "EUR"}
@@ -793,6 +797,7 @@ class Controller:
             "host_key": rec.get("host_key")}
         out["cost_estimate_net_eur"] = self.estimated_cost(rec) if rec.get("offer") else None
         out["billing"] = self._billing_view(rec, now)
+        out["receipt"] = cabin_receipt(out, now)
         out["sealed"] = bool((rec.get("admission") or {}).get("sealed_at")) and rec.get("state") == "active"
         out["release_by"] = self._release_by(rec, now) if out["sealed"] else None
         if expires and rec.get("state") not in ("released",):
