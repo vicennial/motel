@@ -39,18 +39,24 @@ needed.
 
 ## Results
 
-**Measured runs: pending.** No measured run has been published yet. The table below is a template and holds no
-data. Do not fill it with list-price arithmetic.
+Measured on **2026-11-14 to 2026-11-15** against repository commit `42967d7` (workload: repeated rounds of CPython `v3.13.9` PGO build + full test suite via [bench/run_rounds.sh](../bench/run_rounds.sh)). Cabin runs executed 6 rounds on Hetzner CPX42 (`fsn1`); E2B executed 6 rounds on its maximum offered 8 vCPU / 8 GiB sandbox; Daytona hit an account-level 4-vCPU cap and executed 3 rounds on 4 vCPU / 8 GiB (all 3 failed one CPython test inside the container).
 
-| Platform | Size | Run | Cold start | Build + test (s) | Whole script (s) | Status | Billed amount | Source of the amount |
-|---|---|---|---|---|---|---|---|---|
-| Cabin, CPX42 | 8 vCPU / 16 GiB | 1 | pending | pending | pending | pending | pending | pending |
-| Cabin, CPX42 | 8 vCPU / 16 GiB | 2 | pending | pending | pending | pending | pending | pending |
-| Cabin, CPX42 | 8 vCPU / 16 GiB | 3 | pending | pending | pending | pending | pending | pending |
-| Cabin, CCX33 | 8 vCPU / 32 GiB | 1 to 3 | pending | pending | pending | pending | pending | pending |
-| Managed sandbox A | 8 vCPU / 8 GiB | 1 to 3 | pending | pending | pending | pending | pending | pending |
-| Managed sandbox B | 8 vCPU / 8 GiB | 1 to 3 | pending | pending | pending | pending | pending | pending |
+| Platform | Size | Run | Cold start | Rounds | Whole job (s) | Per round (min) | Status | Amount | Source of the amount |
+|---|---|---:|---:|---:|---:|---:|---|---|---|
+| Cabin, CPX42 (`fsn1`) | 8 vCPU / 16 GiB | 1 | 43 s | 6 | 1,416 | 3.93 | `ok` | EUR 0.1122 (~$0.123) | Hetzner started-hour rate (`fsn1` + IPv4, 1 h billed) |
+| Cabin, CPX42 (`fsn1`) | 8 vCPU / 16 GiB | 2 | 75 s | 6 | 2,359 | 6.55 | `ok` | EUR 0.1122 (~$0.123) | Hetzner started-hour rate (`fsn1` + IPv4, 1 h billed) |
+| Cabin, CPX42 (`fsn1`) | 8 vCPU / 16 GiB | 3 | 75 s | 6 | 2,373 | 6.59 | `ok` | EUR 0.1122 (~$0.123) | Hetzner started-hour rate (`fsn1` + IPv4, 1 h billed) |
+| **Cabin, CPX42 median** | **8 vCPU / 16 GiB** | **med** | **75 s** | **6** | **2,359 (39.3 m)** | **6.55** | **3/3 `ok`** | **~$0.123 / run ($0.021/round; $0.013/round full-hr)** | **1 started hour billed** |
+| E2B | 8 vCPU / 8 GiB | 1 | 1.01 s | 6 | 1,857 (life 1,904 s) | 5.16 | `ok` | ~$0.282 | List-price calc (`$0.000148/s` × sandbox lifetime) |
+| E2B | 8 vCPU / 8 GiB | 2 | 1.60 s | 6 | 2,562 (life 2,583 s) | 7.12 | `ok` | ~$0.382 | List-price calc (`$0.000148/s` × sandbox lifetime) |
+| E2B | 8 vCPU / 8 GiB | 3 | 1.04 s | 6 | 1,986 (life 1,993 s) | 5.52 | `ok` | ~$0.295 | List-price calc (`$0.000148/s` × sandbox lifetime) |
+| **E2B median** | **8 vCPU / 8 GiB** | **med** | **1.04 s** | **6** | **1,986 (33.1 m)** | **5.52** | **3/3 `ok`** | **~$0.295 / run ($0.049/round)** | **2.4× cabin as-billed · 3.7× at full cabin hour** |
+| Daytona (4-vCPU cap) | 4 vCPU / 8 GiB | 1 | 1.26 s | 3 | 935 (life 949 s) | 5.19 | `tests_failed` | ~$0.087 | List-price calc (`$0.000092/s` × sandbox lifetime) |
+| Daytona (4-vCPU cap) | 4 vCPU / 8 GiB | 2 | 1.82 s | 3 | 927 (life 949 s) | 5.15 | `tests_failed` | ~$0.087 | List-price calc (`$0.000092/s` × sandbox lifetime) |
+| Daytona (4-vCPU cap) | 4 vCPU / 8 GiB | 3 | 0.99 s | 3 | 917 (life 949 s) | 5.09 | `tests_failed` | ~$0.087 | List-price calc (`$0.000092/s` × sandbox lifetime) |
+| **Daytona median** | **4 vCPU / 8 GiB** | **med** | **1.26 s** | **3** | **927 (15.4 m)** | **5.15** | **0/3 `ok`** | **~$0.087 / run ($0.029/round)** | **4-core cabin (`cpx32`) match still pending** |
 
-When runs exist, this page will carry the median and every raw value for each row, the CPU model for each, every
-failed or aborted run, and the exact commit of this repository that produced them. Sandbox A and B are named in
-[bench/competitors.md](../bench/competitors.md), which also sets the fairness rules.
+**Hardware and notes:**
+- **CPU models recorded:** Cabin CPX42: `AMD EPYC-Genoa Processor` (shared cores — run 1 was notably faster than runs 2–3, showing noisy-neighbor variance); E2B: `Intel(R) Xeon(R) Processor @ 2.60GHz`; Daytona: `AMD EPYC 9J45 128-Core Processor`.
+- **Vendor billing source:** E2B and Daytona amounts above are list-price calculations from driver-measured sandbox lifetime seconds (`bench/prices.toml`, read 2026-11-14); vendor dashboard invoice reconciliation has not been verified yet.
+- **Failed / aborted earlier attempts:** One initial 1-round CPX42 cabin run (`7.3 m`, `ok`) was too short to fill an hour and replaced with the 6-round harness; two initial vendor attempts failed due to a bug in the local benchmark driver (missing `--jobs` override inside containers reporting host cores) and were aborted, deleted and re-run cleanly. CCX33 (dedicated cores) and a matching 4-core CPX32 cabin run remain pending.

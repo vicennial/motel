@@ -1,9 +1,9 @@
 # What cabins cost, and when a managed sandbox is cheaper
 
 A cabin is a Hetzner Cloud server in your own account. Hetzner bills it per started hour. Managed sandbox services
-bill per second but charge more per hour. This page compares list prices read on 2026-11-14. They are list prices,
-not measured runs: nothing here ran on a vendor. Measured runs are still pending
-([docs/benchmarks.md](benchmarks.md)).
+bill per second but charge more per hour. The table below compares list prices read on 2026-11-14. For 3-run measured
+CPython build-and-test timings across Hetzner CPX42, E2B and Daytona (2.4× cheaper per round as-billed on E2B, 3.7×
+if the cabin's billed hour is filled), see [docs/benchmarks.md](benchmarks.md).
 
 At list prices, for sustained 8 to 16 vCPU work, a Hetzner orderable type costs about 5x to 8x less than a
 per-second sandbox, and the gap shrinks or reverses for short runs.
