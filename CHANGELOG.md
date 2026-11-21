@@ -5,12 +5,15 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-21
+
+First release. motel gives an agent disk and servers by the hour: private scratch directories on temporary cloud
+volumes (rooms), disposable servers (cabins) and swarms of bounded agent jobs on fresh cabins (tours). A root-owned
+front desk holds the cloud token, so the agent never sees it.
+
 ### Added
-- Tour spec key `model` (experimental), in `[defaults]` or per guest, for the `claude` and `codex` adapters: it is passed as
-  `--model` to the agent CLI. Use it to run bulk work on a cheaper model, for example under `auth = "own-login"`, where model
-  use is not metered. The `command` adapter takes none. An omitted `model` changes nothing. A model the concierge does not
-  price is billed at its highest rate, so it cannot get past a budget. It shows in `tour status` and the result record only
-  when set. See [docs/tours.md](docs/tours.md).
+
+#### Launch additions (baked images, Omnigent setup, receipts, benchmarks)
 - `motel omnigent setup | status | mcp-config` (experimental): one command that checks cabins and Omnigent, installs motel
   into Omnigent's environment when the provider is missing there, and writes the `sandbox:` block into the Omnigent server
   config (backup first, atomic, idempotent, other keys and comments kept). It never restarts the server. `status` is the
@@ -22,14 +25,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
   `motel omnigent setup --image NAME` writes `image` and `bootstrap: none`, and `status` checks that the image exists. Run
   `motel install --upgrade` to add the one new sudoers line. See [docs/cabins.md](docs/cabins.md#start-from-a-baked-image) and
   [docs/omnigent.md](docs/omnigent.md#faster-first-session-bake-an-image).
-
-## [0.1.0] - 2026-11-11
-
-First release. motel gives an agent disk and servers by the hour: private scratch directories on temporary cloud
-volumes (rooms), disposable servers (cabins) and swarms of bounded agent jobs on fresh cabins (tours). A root-owned
-front desk holds the cloud token, so the agent never sees it.
-
-### Added
+- Tour spec key `model` (experimental), in `[defaults]` or per guest, for the `claude` and `codex` adapters: it is passed as
+  `--model` to the agent CLI. A model the concierge does not price is billed at its highest rate, so it cannot get past a
+  budget. It shows in `tour status` and the result record only when set. See [docs/tours.md](docs/tours.md).
+- Receipts on `cabin checkout`, `cabin run` and `tour`, grouped help, first-run hints, offline cabin demo (`motel try`),
+  and measured 3-run CPython benchmarks & cost calculator (`bench/`, [docs/benchmarks.md](docs/benchmarks.md), [docs/cost.md](docs/cost.md)).
 
 #### Rooms
 - `motel checkin / ls / status / extend / checkout / restore / doctor`: a private `0700` directory on a temporary cloud
