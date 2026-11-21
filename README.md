@@ -1,24 +1,34 @@
-<p align="center"><img src="https://raw.githubusercontent.com/vicennial/motel/main/docs/assets/social-preview.png" alt="motel" width="720"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/vicennial/motel/main/docs/assets/social-preview.png" alt="motel" width="760"></p>
 
 # motel
 
 **Disk and servers by the hour, for agents.**
 
-One command rents a whole server in your own cloud account, runs the job and deletes the server:
-`motel cabin run --for 1h -- make test`. `motel checkin 500G` adds temporary disk to the machine you already have.
-Tours run N agents on N fresh servers, with a budget each. It also works as an Omnigent sandbox provider.
+One command rents a disposable server in your own cloud account, runs the job, and deletes it — or adds temporary disk to your host. Your agent never sees your cloud token, and an external reaper deletes anything left behind.
 
 ```bash
-uvx motel try                                       # one full stay: offline, no root, no cloud
+uvx motel try                                       # offline tour: no root, no cloud, no config
 sudo uvx --from motel motel install --users $USER   # install the front desk
 sudo motel-desk setup hetzner && motel doctor       # connect Hetzner, then check
 ```
 
+## Four commands once set up
+
+[![PyPI](https://img.shields.io/pypi/v/motel.svg)](https://pypi.org/project/motel/)
+[![Python](https://img.shields.io/pypi/pyversions/motel.svg)](https://pypi.org/project/motel/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](https://github.com/vicennial/motel/blob/main/LICENSE)
+[![CI](https://github.com/vicennial/motel/actions/workflows/ci.yml/badge.svg)](https://github.com/vicennial/motel/actions/workflows/ci.yml)
+
+```bash
+motel cabin run --for 1h -- pytest                  # 1. Cabin: fresh server, sync repo, run, delete
+motel checkin 500G --for 6h --task render           # 2. Room: temporary cloud disk that auto-expires
+motel tour start tour.toml                          # 3. Tour: N agents on N fresh servers, budget-capped
+motel omnigent setup --image omnigent               # 4. Omnigent: drop-in sandbox provider on your cloud
+```
+
 ## What are a cabin, a tour and a room?
 
-**Status:** experimental, Hetzner only. The live harness has run rooms, cabins (`ssh-allowlist` mode, one image and
-server type), tours of command guests and one Omnigent session against real Hetzner projects. Agent guests that call a
-model, `tailscale` mode and every other cloud are tested against fakes only.
+**Status:** experimental, Hetzner only. Rooms, cabins (`ssh-allowlist` mode, `cpx42`/`cpx52`, stock and baked images), tours of command guests, and Omnigent `0.21.0` server-managed sessions have been verified against real Hetzner projects. Agent guests that call a model, `tailscale` mode and every other cloud are tested against fakes only.
 
 | Word | What it is | Status |
 |---|---|---|
@@ -223,8 +233,9 @@ instead of an API key, with real risks. See [docs/tours.md](https://github.com/v
 Yes, as an optional provider. With cabins working on your machine, `motel omnigent setup` installs the provider into
 Omnigent's environment and writes the `sandbox:` block into the Omnigent server config; you then restart the server.
 Each session's host runs on a cabin that has a TTL, a dead-man timer and your price cap, and is checked out when the
-session ends. Credentials pass by variable name, not copied. The first session on a bare cabin takes minutes.
-Experimental; run against a real Hetzner cabin with Omnigent 0.21.0:
+session ends. Credentials pass by variable name, not copied. The first session on a bare cabin takes minutes; baking
+an image once with `motel omnigent bake-script` brings cabin boot to ~51 seconds (`motel omnigent setup --image omnigent`).
+Experimental; verified against a real Hetzner cabin with Omnigent 0.21.0:
 [docs/omnigent.md](https://github.com/vicennial/motel/blob/main/docs/omnigent.md).
 
 ## FAQ
@@ -247,6 +258,8 @@ planned). The busy check does not see into overlay or other stacked filesystems 
 ## Docs
 
 [Quickstart](https://github.com/vicennial/motel/blob/main/docs/quickstart.md) ·
+[Cost](https://github.com/vicennial/motel/blob/main/docs/cost.md) ·
+[Benchmarks](https://github.com/vicennial/motel/blob/main/docs/benchmarks.md) ·
 [Architecture](https://github.com/vicennial/motel/blob/main/docs/architecture.md) ·
 [Lifecycle](https://github.com/vicennial/motel/blob/main/docs/lifecycle.md) ·
 [Configuration](https://github.com/vicennial/motel/blob/main/docs/configuration.md) ·
