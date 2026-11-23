@@ -161,6 +161,10 @@ sustained work at 8 to 16 vCPU. Sources, method and more sizes:
 
 Hetzner: the page's hourly "from" price (EUR 0.0953, with IPv4, no VAT) at 1.10 USD per EUR.
 
+**Live benchmark.** Across 3 runs each of a multi-round CPython `3.13.9` PGO build + full test suite, a dedicated Hetzner `CCX33` cabin (8 vCPU / 32 GiB) was **17% faster** than E2B's max 8 vCPU / 8 GiB tier (`4.71` vs `5.52 min/round`, `1.7%` vs `38%` spread), with 4× the RAM and **2.5× lower cost per round** at a full hour (`CPX42`: `2.4×` as-billed / `3.7×` full-hr; 4-core `CPX32` vs Daytona: `3/3 ok` vs `0/3 ok`, `3.9×` full-hr). Full raw runs, CPU models and caveats: [docs/benchmarks.md](https://github.com/vicennial/motel/blob/main/docs/benchmarks.md).
+
+<p align="center"><img src="https://raw.githubusercontent.com/vicennial/motel/main/docs/assets/benchmarks.png" alt="Live CPython 3.13.9 PGO + full test suite benchmark comparing Hetzner CCX33, CPX42, CPX32 against E2B and Daytona" width="760"></p>
+
 **When a managed sandbox is the better choice:**
 
 - Jobs shorter than about 10 minutes. Hetzner bills each started hour, so a 5-minute cabin costs a full hour.
