@@ -77,10 +77,17 @@ A cabin is a disposable server: a bigger machine for a test suite or build, reac
 experimental and may be switched off on this host (the command then says so; do not retry).
 
 ```bash
-motel cabin run -- make test       # sync the worktree, run, stream output, keep the exit code, release
-motel cabin checkin --for 2h       # or take one and use it for several steps
+motel cabin run -- make test          # fresh server: sync the worktree, run, stream output, release
+motel cabin run --pool ci -- pytest   # opt-in per-user warm pool: reuse your matching idle cabin within its paid hour
+motel cabin pool ls | drain           # inspect or check out idle cabins in your warm pools
+motel cabin checkin --for 2h          # or take one and use it for several steps
 motel cabin ls | status | ssh | extend | checkout
 ```
+
+Default `cabin run` and `tours` always start a fresh server per job. `--pool NAME` is opt-in, strictly same-owner VM
+reuse: `~/work` is synced with `rsync --delete` between runs, but system state outside `~/work` persists until the idle
+reaper deletes the cabin before the next billed hour (or you run `motel cabin pool drain`). Use `--pool` only for
+trusted, same-owner iterative work, never with `--cabin` or `--keep`.
 
 Unlike rooms, **a checked-out cabin is deleted for good: no grace, no lost & found, no restore.** Copy
 results back first. Cabins cost money by the hour: check out as soon as you are done, and apply the same

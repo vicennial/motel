@@ -165,7 +165,10 @@ a user or group per lease and was judged not worth the complexity for this first
 | command | what it does |
 |---|---|
 | `motel cabin run [--type T] [--for D] [--task N] [--disk SIZE] [--image NAME] [--keep] -- CMD...` | check in, `rsync` the current git checkout (tracked files plus untracked files that are not ignored) to `~/work`, run `CMD` there, check out. The exit status is the command's when the command ran and the cabin is released or only waits for provider cleanup (see the exit rules below). With `--keep` it stays. With `--json` the last line of stdout is one object `{schema, ok, cabin, exit_code, kept, released, hourly_net_eur, cost_estimate_net_eur}` (plus `billed_hours`, the started hours the estimate counts, when the provider bills per started hour, and `image`, the image name, when a baked image was used); the command's own stdout and stderr are passed through untouched, and the `motel:` status lines stay on stderr. |
-| `motel cabin run --cabin ID [--json] -- CMD...` | the same sync and run in a cabin you already hold: no checkin, no checkout, the cabin keeps its own checkout time. Not combined with `--type`, `--for`, `--task`, `--disk`, `--image` or `--keep`. |
+| `motel cabin run --pool NAME [--type T] [--for D] [--disk SIZE] [--image NAME] [--json] -- CMD...` | opt-in per-user warm pool: reuse a matching idle cabin of yours (syncing `~/work` with `rsync --delete` so stale workspace files do not leak) or check in a new one (`--task pool-NAME`, default `--for 1h`) and keep it warm in the pool. Not combined with `--cabin`, `--keep` or `--task`. `--json` adds `pool` and `pool_hit`. |
+| `motel cabin run --cabin ID [--json] -- CMD...` | the same sync and run in a cabin you already hold: no checkin, no checkout, the cabin keeps its own checkout time. Not combined with `--type`, `--for`, `--task`, `--disk`, `--image`, `--keep` or `--pool`. |
+| `motel cabin pool ls [NAME] [--json]` | list your pooled cabins with live state, busy/idle lock status, type, image, `paid_until` and `release_window`, pruning released entries |
+| `motel cabin pool drain [NAME] [--json]` | check out every idle (unlocked) cabin in the named pool (or all pools), skipping busy locked cabins with a note |
 | `motel cabin checkin [--type T] [--for D] [--task N] [--disk SIZE] [--image NAME] [--json]` | take a cabin; prints its id |
 | `motel cabin images [--json]` | the baked images you can start a cabin from: name, id, created, size |
 | `motel cabin ls [--json]` / `status ID [--json]` | your cabins; provider inventory status |
@@ -177,6 +180,36 @@ a user or group per lease and was judged not worth the complexity for this first
 `--disk 200G` adds a volume in the same cabin project. It is attached at creation, mounted at
 `/mnt/cabin-disk` (symlinked as `~/disk`), carries the cabin's labels and expiry, and is deleted with the
 cabin after the server is verified absent. It is priced into the hourly cap.
+
+### Warm pools (opt-in)
+
+Default `motel cabin run` and `motel tour` always start a **fresh server per job**. When you run many short, trusted
+jobs back-to-back (for example, iterating on a test suite) and want to reuse a server during the hour you already paid
+for, opt in with `--pool NAME`:
+
+```bash
+motel cabin run --pool ci -- pytest                 # cold miss: checks in a cabin (--for 1h) and keeps it warm
+motel cabin run --pool ci -- pytest tests/auth      # warm hit: syncs ~/work with --delete, runs in seconds
+motel cabin pool ls                                 # inspect live state, busy/idle lock, paid_until / release_window
+motel cabin pool drain ci                           # check out idle cabins now (skips busy cabins)
+```
+
+- **Strictly per Unix user, client-side only.** Pool indexes and per-cabin `fcntl.flock` lockfiles live under your own
+  `~/.local/state/motel/pools/<name>/` (directories `0700`, files `0600`). Cabins are never shared across Unix users,
+  and pooling requires no changes to `motel-desk` or sudoers.
+- **Exact shape matching.** A pooled cabin is only reused when its live `(server_type, image, disk)` matches your
+  request exactly, its state is `active` and not `sealed`, its per-cabin lock is free, and at least 8 minutes remain
+  before `min(expires_at, billing.release_window.opens)`. Dead, released, sealed or expiring entries are pruned cleanly.
+  If every matching cabin is currently busy running another job, `--pool` checks in another cabin (up to `max_concurrent`).
+- **Lifecycle and cost.** Pooled runs do not call `checkout` on completion; when the pool goes idle, `motel-desk`'s
+  existing idle reaper seals the cabin and deletes it in the paid-hour release window before the next billed hour starts.
+  Measured live on Hetzner `cpx42` (`fsn1`): a cold miss took `64.8 s` (`ready in 63s`), while a subsequent warm hit
+  took `1.24 s` (**52× faster**) on the same cabin inside the same paid hour. Run `motel cabin pool drain [NAME]` to
+  release idle pooled cabins immediately.
+- **Honest isolation boundary.** On pooled runs, `~/work` is synced with `rsync --delete` so files left behind in the
+  workspace by an earlier job are removed, but **system state outside `~/work`** (installed packages, `/tmp`, caches,
+  background state) persists across runs in the same pool. Use `--pool` only for same-owner, mutually trusted jobs; use
+  default `motel cabin run` (no `--pool`) or `motel tour` whenever a job needs a clean VM.
 
 ### Start from a baked image
 
@@ -326,8 +359,10 @@ What the reaper does about it, for a cabin it finds idle (30 minutes of verified
 - **TTL and `max_lifetime` are promises and are never extended for billing.** The cabin is not kept past its TTL, and it
   is deleted now when the next pass would come after the TTL. A busy cabin is still deleted at its TTL plus the 10 minute
   grace, wherever that falls in a paid hour.
-- **Explicit `checkout` and `cabin run` delete at once**, because you asked for it. A cabin is never parked or reused for
-  another job or user: that would leak state between jobs. Tour guests each get a fresh cabin, as before.
+- **Explicit `checkout` and default `cabin run` delete at once**, because you asked for it. Default `cabin run` and
+  `tours` always create a fresh server per job and never share a cabin across users. For same-owner iterative work
+  within a paid hour, you can opt in to per-user reuse with `cabin run --pool NAME` (see
+  [Warm pools (opt-in)](#warm-pools-opt-in)).
 - A cloud whose billing is not per started hour, or is not confirmed (`unknown`), gets none of this: an idle cabin is deleted as
   soon as it is sealed.
 

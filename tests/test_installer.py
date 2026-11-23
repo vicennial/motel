@@ -113,7 +113,7 @@ class InstallTest(unittest.TestCase):
         env = {"PATH": "/usr/bin:/bin", "PYTHONPATH": "/nonexistent"}
         proc = subprocess.run([sys.executable, "-I", str(script), "--version"], capture_output=True, text=True, env=env)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertTrue(proc.stdout.startswith("motel 0.1.0"))
+        self.assertTrue(proc.stdout.startswith("motel 0.2.0"))
 
     def test_no_pycache_or_tests_are_installed(self):
         self.run_sh("--users", "alice")

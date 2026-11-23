@@ -5,6 +5,23 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
+### Added
+- Opt-in, per-user warm cabin pooling (experimental, client-side only — no changes to `motel-desk`, sudoers or tours):
+  - `motel cabin run --pool NAME [--type T] [--image IMG] [--for TTL] [--disk SIZE] [--json] -- CMD...`: reuses a
+    matching idle cabin owned by the same Unix user within its already-paid hour (syncing `~/work` with `rsync --delete`,
+    verifying live `active`, unsealed status with at least 8 minutes before `min(expires_at, billing.release_window.opens)`),
+    or checks in a new cabin (`--task pool-NAME`, default `--for 1h`) and leaves it warm for `motel-desk`'s idle reaper
+    to delete before the next billed hour starts. State and per-cabin `fcntl.flock` lockfiles live under
+    `~/.local/state/motel/pools/<name>/` (`0700` dirs, `0600` files). `--json` adds `pool` and `pool_hit`. Measured live
+    on Hetzner `cpx42` (`fsn1`): `64.8 s` cold miss to `1.24 s` warm hit (**52× faster** inside the same paid hour).
+  - `motel cabin pool ls [NAME] [--json]` lists pooled cabins with live state, busy/idle lock status, type, image,
+    `paid_until` and `release_window`, pruning released entries.
+  - `motel cabin pool drain [NAME] [--json]` checks out idle pooled cabins while skipping busy locked cabins with a note.
+  - Default `motel cabin run` and `motel tour` are unchanged and still allocate a fresh server per job.
+- Live 3-run CPython `3.13.9` PGO + full test suite benchmarks for dedicated Hetzner `CCX33` (`8 vCPU / 32 GiB`: `4.71 min/round`, `1.7%` spread, 17% faster / 4× RAM / 2.5× lower cost per round at full hour vs E2B) and 4-core `CPX32` (`3/3 ok`, 3.9× lower cost at full hour vs Daytona), plus refreshed `docs/assets/benchmarks.png` and `docs/benchmarks.md`.
+
 ## [0.1.0] - 2026-11-21
 
 First release. motel gives an agent disk and servers by the hour: private scratch directories on temporary cloud
@@ -132,5 +149,6 @@ front desk holds the cloud token, so the agent never sees it.
 - The front desk needs Linux. `motel try` is plain Python and is tested on Linux only.
 - Monthly caps are estimates from size times price, not limits the provider enforces.
 
-[Unreleased]: https://github.com/vicennial/motel/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vicennial/motel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/vicennial/motel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vicennial/motel/releases/tag/v0.1.0

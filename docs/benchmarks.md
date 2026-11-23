@@ -66,6 +66,15 @@ Measured on **2026-11-14 to 2026-11-15** (commit `42967d7`: CPX42, E2B, Daytona)
 | Daytona (4-vCPU cap) | 4 vCPU / 8 GiB | 3 | 0.99 s | 3 | 917 (life 949 s) | 5.09 | `tests_failed` | ~$0.087 | List-price calc (`$0.000092/s` × sandbox lifetime) |
 | **Daytona median** | **4 vCPU / 8 GiB** | **med** | **1.26 s** | **3** | **927 (15.4 m)** | **5.15** | **0/3 `ok`** | **~$0.087 / run ($0.029/round)** | **Faster per round, 0/3 `ok`, 3.9× CPX32 at full hour** |
 
+**Warm cabin pooling (`--pool`, measured 2026-11-23):**
+
+For short iterative jobs by the same Unix user, opt-in `motel cabin run --pool NAME -- CMD` reuses an active idle cabin inside its already-paid hour and syncs `~/work` with `rsync --delete` (default `cabin run` and `tours` still boot a fresh server per job; see [docs/cabins.md](cabins.md#warm-pools-opt-in)). Measured live on a Hetzner `cpx42` cabin in `fsn1`:
+
+| Phase | Wall time | Notes |
+|---|---:|---|
+| Cold miss (`pool_hit: false`) | `64.8 s` (`ready in 63s`) | Full server create, cloud-init bootstrap, `rsync`, command |
+| Warm hit (`pool_hit: true`) | `1.24 s` (**52× faster**) | Reuses the same `cpx42` cabin inside the same paid hour (`rsync --delete` removes stale files in `~/work`) |
+
 **Hardware and notes:**
 - **CPU models recorded:** Cabin CCX33: `AMD EPYC-Milan Processor` (dedicated cores — `<2%` spread across 3 separate servers: `1,672–1,700 s`, beating E2B's `1,857–2,562 s` median speed and `38%` spread with 4× the RAM); Cabin CPX42 and CPX32: `AMD EPYC-Genoa Processor` (shared cores — noisy-neighbor variance visible on CPX42 runs 2–3 and CPX32 run 2); E2B: `Intel(R) Xeon(R) Processor @ 2.60GHz`; Daytona: `AMD EPYC 9J45 128-Core Processor`.
 - **Vendor billing source:** E2B and Daytona amounts above are list-price calculations from driver-measured sandbox lifetime seconds (`bench/prices.toml`, read 2026-11-14); vendor dashboard invoice reconciliation has not been verified yet.

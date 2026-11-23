@@ -45,11 +45,17 @@ motel omnigent setup --image omnigent               # 4. Omnigent: drop-in sandb
 ## How do I run a job on a fresh server?
 
 ```console
-$ motel cabin run --for 1h -- make test     # check in, sync this git checkout, run, check out
+$ motel cabin run --for 1h -- make test             # fresh server: check in, sync, run, check out
+$ motel cabin run --pool ci -- make test            # opt-in per-user warm pool: reuse a matching idle cabin
+$ motel cabin pool ls && motel cabin pool drain ci  # inspect or release pooled cabins
 ```
 
-The server lives in your own Hetzner project, and the exit status is the command's. Setup (a new empty project,
-a token, one install flag) takes five lines: [first cabin](https://github.com/vicennial/motel/blob/main/docs/cabins.md#first-cabin).
+The server lives in your own Hetzner project, and the exit status is the command's. Default `cabin run` and `tours`
+always start a fresh server per job; `--pool NAME` is opt-in same-owner VM reuse within a cabin's already-paid hour
+(measured on Hetzner `cpx42` in `fsn1`: `64.8 s` cold miss to `1.24 s` warm hit — **52× faster**, syncing `~/work`
+with `rsync --delete` inside the same paid hour; see
+[warm pools](https://github.com/vicennial/motel/blob/main/docs/cabins.md#warm-pools-opt-in)). Setup (a new empty
+project, a token, one install flag) takes five lines: [first cabin](https://github.com/vicennial/motel/blob/main/docs/cabins.md#first-cabin).
 
 ## How do I give an agent 200 GB for an afternoon?
 

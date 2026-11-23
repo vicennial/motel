@@ -12,7 +12,7 @@ class VersionTest(unittest.TestCase):
     def test_pyproject_and_package_versions_match(self):
         meta = tomllib.loads((ROOT / "pyproject.toml").read_text())
         self.assertEqual(meta["project"]["version"], motel.__version__)
-        self.assertEqual(motel.__version__, "0.1.0")
+        self.assertEqual(motel.__version__, "0.2.0")
 
     def test_server_json_version_matches(self):
         import json

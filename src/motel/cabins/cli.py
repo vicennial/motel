@@ -5,7 +5,10 @@ SSH key, calls the root-owned front desk through ``sudo -n`` and then talks to t
 the cloud token and never passes raw paths or provider IDs to the desk.
 
     motel cabin run [--type T] [--for D] [--keep] [--disk SIZE] [--image NAME] [--json] -- CMD...
+    motel cabin run --pool NAME [--type T] [--for D] [--disk SIZE] [--image NAME] [--json] -- CMD...
     motel cabin run --cabin ID [--json] -- CMD...      (sync and run in a cabin you hold; no checkin, no checkout)
+    motel cabin pool ls [NAME] [--json]
+    motel cabin pool drain [NAME] [--json]
     motel cabin checkin [--type T] [--for D] [--task NAME] [--disk SIZE] [--image NAME] [--json]
     motel cabin images [--json]
     motel cabin ls | status ID | extend ID --for D | checkout ID | doctor | ssh ID [-- CMD...]
@@ -27,7 +30,7 @@ import sys
 import tempfile
 import time
 
-from motel.cabins.config import DESK
+from motel.cabins.config import CONFIG_FILE, DESK
 from motel.cabins.errors import (
     EXIT_BUSY,
     EXIT_ERROR,
@@ -40,8 +43,9 @@ from motel.cabins.errors import (
     Usage,
 )
 from motel.cabins.guestchan import ssh_options
+from motel.cabins.pool import pool_drain, pool_ls, pools_root, run_pooled
 from motel.cabins.render import render
-from motel.cabins.util import LEASE_ID_RE, SCHEMA, TASK_RE, parse_duration, parse_size_gb
+from motel.cabins.util import LEASE_ID_RE, SCHEMA, TASK_RE, parse_duration, parse_size_gb, utcnow
 from motel.errors import NOT_ALLOWED_HINT, NOT_INSTALLED_HINT
 from motel.receipts import cabin_receipt, render_cabin_receipt
 
@@ -62,10 +66,13 @@ started hours billed, price per hour, estimated total, servers left) and `--json
 HELP_EXAMPLES = """\
 examples:
   motel cabin run -- make test            run a command on a fresh server, then delete the server
+  motel cabin run --pool ci -- make test  opt-in warm pool: reuse a matching idle cabin of yours
   motel cabin run --keep -- ./build.sh    keep the cabin afterwards; open it with: motel cabin ssh ID
   motel cabin checkin --for 2h            take a cabin and print its id (it expires after 2h)
   motel cabin images                      list the images your operator baked; start one with --image NAME
   motel cabin ls                          list your cabins
+  motel cabin pool ls                     list your warm cabin pools
+  motel cabin pool drain                  check out idle cabins from your pools
   motel cabin checkout ID                 delete a cabin now and print its receipt
 
 No cloud yet? `motel try --cabin` shows a cabin run and a small tour, offline, with their receipts."""
@@ -95,10 +102,20 @@ def build_parser() -> argparse.ArgumentParser:
                          description=HELP_DESCRIPTION, epilog=HELP_EXAMPLES)
     sub = parser.add_subparsers(dest="verb", required=True, parser_class=CabinParser, metavar="VERB")
     p = sub.add_parser("run", parents=[launch, common], allow_abbrev=False,
-                       help="check in, sync this git worktree, run CMD, check out (unless --keep)")
+                       help="check in, sync this git worktree, run CMD, check out (unless --keep or --pool)")
     p.add_argument("--keep", action="store_true", help="do not check out afterwards")
     p.add_argument("--cabin", default=None, metavar="ID",
                    help="run in this existing cabin: sync and run only, no checkin and no checkout")
+    p.add_argument("--pool", default=None, metavar="NAME",
+                   help="opt-in per-user warm pool: reuse a matching idle cabin or check in a new one and keep it warm")
+    p_pool = sub.add_parser("pool", allow_abbrev=False, help="manage opt-in per-user warm cabin pools (ls, drain)")
+    pool_sub = p_pool.add_subparsers(dest="pool_verb", required=True, parser_class=CabinParser, metavar="ACTION")
+    p_pls = pool_sub.add_parser("ls", parents=[common], allow_abbrev=False,
+                                help="list pooled cabins with live state and lock status")
+    p_pls.add_argument("pool_name", nargs="?", default=None, metavar="NAME", help="pool name (omit for all pools)")
+    p_pdrain = pool_sub.add_parser("drain", parents=[common], allow_abbrev=False,
+                                   help="check out every idle cabin in a pool (or all pools)")
+    p_pdrain.add_argument("pool_name", nargs="?", default=None, metavar="NAME", help="pool name (omit for all pools)")
     sub.add_parser("checkin", parents=[launch, common], allow_abbrev=False, help="take a cabin; prints its id")
     sub.add_parser("ls", parents=[common], allow_abbrev=False, help="list your cabins")
     sub.add_parser("images", parents=[common], allow_abbrev=False, help="list the baked images you can start a cabin from")
@@ -181,17 +198,41 @@ def baked_image(offer) -> str | None:
     return offer.get("image_name") if offer.get("image_type") == "snapshot" else None
 
 
+def _escape_rsync_pattern(path: str) -> str:
+    return path.replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?").replace("[", "\\[")
+
+
+def _rsync_include_rules(files: list[str]) -> list[str]:
+    """Build anchored rsync include patterns (ancestor directories + exact files) for ``--delete-excluded``."""
+    dirs: set[str] = set()
+    rules: list[str] = []
+    for name in files:
+        parts = name.split("/")
+        for idx in range(1, len(parts)):
+            parent = "/".join(parts[:idx])
+            if parent not in dirs:
+                dirs.add(parent)
+                rules.append("/" + _escape_rsync_pattern(parent) + "/")
+        rules.append("/" + _escape_rsync_pattern(name))
+    return rules
+
+
 def encode_job(command, cwd=REMOTE_DIR) -> str:
     return base64.b64encode(json.dumps({"argv": list(command), "cwd": cwd}).encode()).decode()
 
 
 class Cli:
     def __init__(self, *, runner=subprocess.run, root=None, make_key=keygen, out=None, err=None, cwd=None,
-                 monotonic=time.monotonic, desk=DESK, desk_exists=None, sleep=time.sleep):
+                 monotonic=time.monotonic, desk=DESK, desk_exists=None, sleep=time.sleep,
+                 pools_root_dir=None, clock=utcnow, config_path=None):
         self.runner, self.root, self.make_key = runner, root or state_root(), make_key
         self.out, self.err = out or sys.stdout, err or sys.stderr
         self.cwd = cwd or os.getcwd()
         self.monotonic, self.sleep, self.desk = monotonic, sleep, desk
+        self.clock = clock
+        self.pools_root = pools_root_dir if pools_root_dir is not None else pools_root(root)
+        self.config_path = config_path if config_path is not None else (
+            CONFIG_FILE if runner is subprocess.run else None)
         self.desk_exists = desk_exists if desk_exists is not None else (
             lambda: os.path.exists(desk) or runner is not subprocess.run)
 
@@ -309,13 +350,23 @@ class Cli:
             if os.path.exists(path):
                 os.unlink(path)
 
-    def sync(self, cabin: str, view: dict) -> int:
-        """rsync the current git worktree (tracked + untracked-not-ignored) into ~/work on the cabin."""
+    def sync(self, cabin: str, view: dict, *, delete: bool = False) -> int:
+        """rsync the current git worktree (tracked + untracked-not-ignored) into ~/work on the cabin.
+
+        With ``delete=True`` (used for pooled warm runs), removes stale files in ``~/work`` that are not in the
+        current worktree so artifacts from a previous job do not leak.
+        """
         files = worktree_files(self.cwd, self.runner)
         cfg = self.ssh_cfg(cabin)
-        payload = b"".join(f.encode("utf-8", "surrogateescape") + b"\0" for f in files)
-        argv = ["/usr/bin/rsync", "-a", "--from0", "--files-from=-", "-e", f"/usr/bin/ssh -F {shlex.quote(cfg)}",
-                "./", f"{view['name']}:{REMOTE_DIR}/"]
+        if delete:
+            rules = _rsync_include_rules(files)
+            payload = b"".join(r.encode("utf-8", "surrogateescape") + b"\0" for r in rules)
+            argv = ["/usr/bin/rsync", "-a", "--delete", "--delete-excluded", "--from0", "--include-from=-",
+                    "--exclude=*", "-e", f"/usr/bin/ssh -F {shlex.quote(cfg)}", "./", f"{view['name']}:{REMOTE_DIR}/"]
+        else:
+            payload = b"".join(f.encode("utf-8", "surrogateescape") + b"\0" for f in files)
+            argv = ["/usr/bin/rsync", "-a", "--from0", "--files-from=-", "-e", f"/usr/bin/ssh -F {shlex.quote(cfg)}",
+                    "./", f"{view['name']}:{REMOTE_DIR}/"]
         proc = self.runner(argv, input=payload, cwd=self.cwd, check=False, env=SAFE_ENV)
         return proc.returncode
 
@@ -324,7 +375,7 @@ class Cli:
         argv = ["/usr/bin/ssh", "-F", cfg, "-T", "--", view["name"], "motel-guest run " + encode_job(command)]
         return self.runner(argv, check=False).returncode
 
-    def result_line(self, args, cabin, result, *, kept, offer=None, done=None) -> None:
+    def result_line(self, args, cabin, result, *, kept, offer=None, done=None, pool=None, pool_hit=None) -> None:
         """``run --json``: one final JSON object on stdout, on a line of its own after the command's own output."""
         if not getattr(args, "json", False):
             return
@@ -338,6 +389,9 @@ class Cli:
             doc["billed_hours"] = hours
         if baked_image(offer):
             doc["image"] = baked_image(offer)
+        if pool is not None:
+            doc["pool"] = pool
+            doc["pool_hit"] = bool(pool_hit)
         print("", file=self.out)
         print(json.dumps(doc, sort_keys=True), file=self.out)
         self.out.flush()
@@ -346,8 +400,12 @@ class Cli:
         command = args.command
         if not command:
             raise Usage("nothing to run: put the command after --", "motel cabin run -- make test")
+        if args.pool is not None and (args.cabin or args.keep):
+            raise Usage("--pool cannot be combined with --cabin or --keep", "motel cabin run --pool NAME -- CMD")
         if args.cabin:
             return self.run_in(args)
+        if args.pool is not None:
+            return run_pooled(self, args)
         started = self.monotonic()
         rc, view = self.checkin(args, getattr(args, "json", False))
         if view is None:
@@ -518,6 +576,11 @@ def main(argv=None, **kw) -> int:
                               check=False).returncode
         if args.verb == "images":
             return cli.images(want_json)
+        if args.verb == "pool":
+            if args.pool_verb == "ls":
+                return pool_ls(cli, args.pool_name, want_json)
+            if args.pool_verb == "drain":
+                return pool_drain(cli, args.pool_name, want_json)
         return cli.simple(args.verb, args, want_json)
     except Fail as exc:
         print(json.dumps(exc.as_json()) if want_json else exc.line(), file=cli.out if want_json else cli.err)

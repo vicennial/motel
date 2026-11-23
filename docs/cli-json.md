@@ -92,7 +92,21 @@ started from a baked image (`--image`), these fields are set, and are absent or 
 | `receipt.image` | the baked image name. The key is absent when the stock image was used |
 
 `cabin run --json` ends with one object (see [Cabins](cabins.md#using-a-cabin)); it has `image` (the baked image name) only when
-one was used.
+one was used. With `--pool NAME`, the object also carries `pool` (the pool name) and `pool_hit` (`true` on warm reuse,
+`false` on cold miss), with `kept: true` and `released: false`.
+
+`cabin pool ls [NAME] --json` prints:
+
+```json
+{"schema": "motel/v1", "ok": true, "pool": "ci",
+ "cabins": [{"pool": "ci", "lease_id": "pool-ci-0123456789ab", "state": "active", "sealed": false, "lock": "idle",
+             "server_type": "cpx32", "image": "ubuntu-24.04", "image_type": "system", "disk_gb": null,
+             "expires_at": "2026-11-08T13:00:00Z", "paid_until": "2026-11-08T13:00:00Z",
+             "release_window": {"opens": "2026-11-08T12:44:00Z", "closes": "2026-11-08T12:54:00Z"}}],
+ "pruned": []}
+```
+
+`cabin pool drain [NAME] --json` prints `{"schema": "motel/v1", "ok": true, "pool": ..., "drained": [...], "skipped": [...], "pruned": [...], "errors": [...]}` (`ok` is `false` and exit is `9` if any cabin stays `cleanup_pending`, or the desk error code if a checkout fails).
 
 `cabin images --json` lists the images this host's operator baked, which the desk accepts for `--image`:
 
